@@ -1,16 +1,26 @@
 import numpy as np
+import pandas as pd
+import seaborn as sb
+import matplotlib.pyplot as plt
 from scipy import sparse
 from scipy.sparse.linalg import spsolve
 
 
-class fiberPhotometryCurve:
-    def __init__(self, gcamp, rcamp, isobestic, behavioral_data):
+class fiberPhotometryFile:
+    def __init__(self, fp_df):
+        self.fp_df = pd.read(fp_df)
+
+
+class fiberPhotometryCurve(fiberPhotometryFile):
+    def __init__(self, gcamp, rcamp, isobestic, behavioral_data, fp_df):
         # initialize a fiber photometry object with gcamp, rcamp, isobestic, and behavioral data properties
+        super().__init__(fp_df)
         self.gcamp = gcamp
         self.rcamp = rcamp
         self.isobestic = isobestic
         self.behavior_data = behavioral_data
 
+    @staticmethod
     def _als_detrend(self, y, lam, p, niter=100):
         L = len(y)
         D = sparse.diags([1, -2, 1], [0, -1, -2], shape=(L, L - 2))
@@ -65,13 +75,13 @@ class fiberPhotometryCurve:
             df_f_iso = self.z_scored_df_f(curve='isobestic')
             return df_f_gcamp, df_f_rcamp, df_f_iso
 
-    def find_events(self):
+    def find_events(self, signal):
         """
-            Use this to determine where the df/f is greater than 3 times the standard deviation.
-            Since the std can be lower than one, we need an if/else statement because if the std
-            is lower than one, then we actually need where the signal is lower than that value otherwise
-            we won't find any events
-            """
+        Use this to determine where the df/f is greater than 3 times the standard deviation.
+        Since the std can be lower than one, we need an if/else statement because if the std
+        is lower than one, then we actually need where the signal is lower than that value otherwise
+        we won't find any events
+        """
         #  create a map of the trace
         events = np.zeros(len(signal))
         # standard deviation variable
@@ -93,5 +103,13 @@ class fiberPhotometryCurve:
     def final_plot(self):
         pass
 
-    def raster_plot(self):
-        pass
+
+def raster(self, raster_array, cmap="coolwarm", event_or_heat='event'):
+    sb.set()
+    if event_or_heat == 'event':
+        fig, ax = plt.subplots()
+        ax.eventplot(raster_array)
+    else:
+        sb.heatmap(raster_array)
+    plt.show()
+    return
