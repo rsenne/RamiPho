@@ -5,6 +5,7 @@ import matplotlib.pyplot as plt
 from scipy import sparse
 from scipy.sparse.linalg import spsolve
 
+
 class fiberPhotometryCurve:
     def __init__(self, gcamp, rcamp, isobestic, timestamps, behavioral_data):
         # initialize a fiber photometry object with gcamp, rcamp, isobestic, and behavioral data properties
@@ -91,12 +92,11 @@ class fiberPhotometryCurve:
     def find_beh(self):
         pass
 
-    def event_triggered_average(self):
-        pass
-
     def final_plot(self):
         pass
 
+def event_triggered_average(dff_array):
+    pass
 
 def raster(raster_array, cmap="coolwarm", event_or_heat='event'):
     sb.set()
@@ -107,6 +107,7 @@ def raster(raster_array, cmap="coolwarm", event_or_heat='event'):
         sb.heatmap(raster_array)
     plt.show()
     return
+
 
 def from_npm_csv(npm_file, behavioral_data=None):
     # read npm file
@@ -144,5 +145,4 @@ def from_npm_csv(npm_file, behavioral_data=None):
         FP = fiberPhotometryCurve(gcamp[['Region1G', 'Region0R']], rcamp[['Region1G', 'Region0R']],
                                   isobestic[['Region1G', 'Region0R']], timestamps=timestamps,
                                   behavioral_data=behavioral_data)
-    return  FP
-
+    return FP
