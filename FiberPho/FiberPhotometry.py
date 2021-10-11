@@ -5,19 +5,13 @@ import matplotlib.pyplot as plt
 from scipy import sparse
 from scipy.sparse.linalg import spsolve
 
-
-class fiberPhotometryFile:
-    def __init__(self, fp_df):
-        self.fp_df = pd.read(fp_df)
-
-
-class fiberPhotometryCurve(fiberPhotometryFile):
-    def __init__(self, gcamp, rcamp, isobestic, behavioral_data, fp_df):
+class fiberPhotometryCurve:
+    def __init__(self, gcamp, rcamp, isobestic, timestamps, behavioral_data):
         # initialize a fiber photometry object with gcamp, rcamp, isobestic, and behavioral data properties
-        super().__init__(fp_df)
         self.gcamp = gcamp
         self.rcamp = rcamp
         self.isobestic = isobestic
+        self.timestamps = timestamps
         self.behavior_data = behavioral_data
 
     @staticmethod
@@ -104,7 +98,7 @@ class fiberPhotometryCurve(fiberPhotometryFile):
         pass
 
 
-def raster(self, raster_array, cmap="coolwarm", event_or_heat='event'):
+def raster(raster_array, cmap="coolwarm", event_or_heat='event'):
     sb.set()
     if event_or_heat == 'event':
         fig, ax = plt.subplots()
@@ -113,3 +107,42 @@ def raster(self, raster_array, cmap="coolwarm", event_or_heat='event'):
         sb.heatmap(raster_array)
     plt.show()
     return
+
+def from_npm_csv(npm_file, behavioral_data=None):
+    # read npm file
+    npm_file = pd.read_csv(npm_file)
+    # split up NPM files based on their flags
+    # i will kill the first born child of everyone at NPM if the flags differ between exps
+    gcamp = npm_file[npm_file['Flags'] == 18]
+    isobestic = npm_file[npm_file['Flags'] == 17]
+    # fix this later
+    rcamp = npm_file[npm_file['Flags'] == 17]
+    # create a list that has each signal so we can check
+    signal = [gcamp, rcamp, isobestic]
+    # check to see if all columns are of equivalent length, is this socialism fox news?
+    min_len = min(gcamp.shape[0], rcamp.shape[0], isobestic.shape[0])
+    for i, j in enumerate(signal):
+        if j.shape[0] != min_len:
+            signal[i] = j[:-1]
+    # new list of variables
+    # this seems like a stupid way to do this, even if its readable...eh who cares
+    gcamp = pd.DataFrame(signal[0])
+    rcamp = pd.DataFrame(signal[1])
+    isobestic = pd.DataFrame(signal[2])
+    # create a list of timestamps in order, gcamp, isobestic, rcamp
+    # i'm literally attracted to list comprehensions
+    timestamps = [x.iloc[:, 1] for x in [gcamp, isobestic, rcamp]]
+    # grab relevant column names
+    columns = list(gcamp.columns)
+    # create fiber photometry object based on column names
+    # we have to do this just because NPM doesn't have a great UI
+    if "Region0G" in columns:
+        FP = fiberPhotometryCurve(gcamp[['Region0G', 'Region1R']], rcamp[['Region0G', 'Region1R']],
+                                  isobestic[['Region0G', 'Region1R']], timestamps=timestamps,
+                                  behavioral_data=behavioral_data)
+    else:
+        FP = fiberPhotometryCurve(gcamp[['Region1G', 'Region0R']], rcamp[['Region1G', 'Region0R']],
+                                  isobestic[['Region1G', 'Region0R']], timestamps=timestamps,
+                                  behavioral_data=behavioral_data)
+    return  FP
+

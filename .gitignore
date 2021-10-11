@@ -132,3 +132,5 @@ dmypy.json
 FiberPho/.idea/workspace.xml
 *.xml
 *.iml
+../../Test_Pho_potato1_avoidance3.csv
+*.csv
