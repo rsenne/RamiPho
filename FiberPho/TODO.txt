@@ -1,0 +1,18 @@
+[TO DO]
+
+Top Priority:
+	(1) Develop structures such that class dynamically adds signal properties that avoids clunkiness within functions
+	(2) Comment the fucking code jesus
+	(3) Error handling 
+	(4) Implemeent visual checks
+	(5) Nix R for GCaMP and G for RCaMP
+ Medium Priority:
+ 	(1) Mini Plots
+ 	(2) Lab Meeting Plots
+ 	(3) Explore moving average filter?
+ 	(4) Python Executable for ease
+ 	(5) Final plot with events, behabior, and average signal or
+ 		individual
+ Low Priority:
+ 	(1) Your mom lol
+ 	(2) GUI?
