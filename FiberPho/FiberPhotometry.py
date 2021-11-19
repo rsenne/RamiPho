@@ -118,19 +118,44 @@ class fiberPhotometryCurve:
         # return a 1 where there is an event, a 0 where there is not
         return events
 
-    def process_data(self):
-        signal = [self.gcamp, pd.DataFrame(self.isobestic.iloc[:, 0]), pd.DataFrame(self.isobestic.iloc[:, 1])]
-        smooth_signals = [self.smooth(raw,10, visual_check=False).flatten() for raw in signal]
-        baselines = [self._als_detrend(raw) for raw in smooth_signals]
-        df_f_signals = [self._df_f((smooth_signals[i]) - (baselines[i]), type='std') for i in range(len(smooth_signals))]
+    def process_data(self, exp_type='gcamp'):
+    # this also seems like a terrible way to do it
+        if exp_type == "dual_color":
+            signal = [self.gcamp, self.rcamp, pd.DataFrame(self.isobestic.iloc[:, 0]),
+                      pd.DataFrame(self.isobestic.iloc[:, 1])]
+            smooth_signals = [self.smooth(raw,10, visual_check=False).flatten() for raw in signal]
+            baselines = [self._als_detrend(raw) for raw in smooth_signals]
+            df_f_signals = [self._df_f((smooth_signals[i]) - (baselines[i]), type='std') for i in range(len(smooth_signals))]
+            # add dff_properties
+            self.dff_gcamp = df_f_signals[0]
+            self.dff_rcamp = df_f_signals[1]
+            self.dff_isobestic = np.vstack((np.array(df_f_signals[2]), np.array(df_f_signals[3])))
+            # remove motion, add property
+            self.final_df_gcamp = self.dff_gcamp - pd.DataFrame(self.dff_isobestic).iloc[0, :]
+            self.final_df_rcamp = self.dff_rcamp - pd.DataFrame(self.dff_isobestic)[1, :]
+        elif exp_type == "gcamp":
+            signal = [self.gcamp, pd.DataFrame(self.isobestic)]
+            smooth_signals = [self.smooth(raw, 10, visual_check=False).flatten() for raw in signal]
+            baselines = [self._als_detrend(raw) for raw in smooth_signals]
+            df_f_signals = [self._df_f((smooth_signals[i]) - (baselines[i]), type='std') for i in
+                            range(len(smooth_signals))]
+            # add dff_properties
+            self.dff_gcamp = df_f_signals[0]
+            self.dff_isobestic = np.array(df_f_signals[1])
+            # remove motion, add property
+            self.final_df_gcamp = pd.DataFrame(self.dff_gcamp) - pd.DataFrame(self.dff_isobestic)
+        elif exp_type == "rcamp":
+            signal = [self.gcamp, pd.DataFrame(self.isobestic)]
+            smooth_signals = [self.smooth(raw, 10, visual_check=False).flatten() for raw in signal]
+            baselines = [self._als_detrend(raw) for raw in smooth_signals]
+            df_f_signals = [self._df_f((smooth_signals[i]) - (baselines[i]), type='std') for i in
+                            range(len(smooth_signals))]
+            # add dff_properties
+            self.dff_rcamp = df_f_signals[0]
+            self.dff_isobestic = np.array(df_f_signals[1])
+            # remove motion, add property
+            self.final_df_gcamp = pd.DataFame(self.dff_gcamp) - pd.DataFrame(self.dff_isobestic)
 
-        # add dff_properties
-        self.dff_gcamp = df_f_signals[0]
-        self.dff_isobestic = np.vstack((np.array(df_f_signals[1]), np.array(df_f_signals[2])))
-        # self.dff_rcamp = df_f_signals.iloc[3, :, :]
-        # remove motion, add property
-        self.final_df_gcamp = self.dff_gcamp - pd.DataFrame(self.dff_isobestic).iloc[0, :]
-        # self.final_df_rcamp = self.dff_rcamp - self.dff_isobestic[1, :]
 
 
     def find_beh(self):
