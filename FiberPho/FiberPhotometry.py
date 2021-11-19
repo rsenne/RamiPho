@@ -7,53 +7,65 @@ from scipy.sparse.linalg import spsolve
 from scipy.ndimage import uniform_filter1d
 
 
-
-def from_npm_csv(npm_file, behavioral_data=None):
-    # read npm file
-    npm_file = pd.read_csv(npm_file)
-    # split up NPM files based on their flags
-    # i will kill the first born child of everyone at NPM if the flags differ between exps
-    gcamp = npm_file[npm_file['Flags'] == 18]
-    isobestic = npm_file[npm_file['Flags'] == 17]
-    # fix this later
-    rcamp = npm_file[npm_file['Flags'] == 20]
-    # create a list that has each signal so we can check
-    signal = [gcamp, rcamp, isobestic]
-    # check to see if all columns are of equivalent length, is this socialism fox news?
-    min_len = min(gcamp.shape[0], isobestic.shape[0])
-    for i, j in enumerate(signal):
-        if j.shape[0] != min_len:
-            signal[i] = j[:-1]
-    # new list of variables
-    # this seems like a stupid way to do this, even if its readable...eh who cares
-    gcamp = pd.DataFrame(signal[0])
-    rcamp = pd.DataFrame(signal[1])
-    isobestic = pd.DataFrame(signal[2])
-    # create a list of timestamps in order, gcamp, isobestic, rcamp
-    # i'm literally attracted to list comprehensions
-    timestamps = [x.iloc[:, 1] for x in signal]
-    # grab relevant column names
-    columns = list(gcamp.columns)
-    # create fiber photometry object based on column names
-    # we have to do this just because NPM doesn't have a great UI
-    if "Region0G" in columns:
-        FP = fiberPhotometryCurve(gcamp[['Region0G']], rcamp[['Region1R']],
-                                  isobestic[['Region0G', 'Region1R']], timestamps=timestamps,
-                                  behavioral_data=behavioral_data)
-    else:
-        FP = fiberPhotometryCurve(gcamp[['Region1G']], rcamp[['Region0R']],
-                                  isobestic[['Region1G', 'Region0R']], timestamps=timestamps,
-                                  behavioral_data=behavioral_data)
-    return  FP
-
 class fiberPhotometryCurve:
-    def __init__(self, gcamp, rcamp, isobestic, timestamps, behavioral_data):
-        # initialize a fiber photometry object with gcamp, rcamp, isobestic, and behavioral data properties
-        self.gcamp = gcamp
-        self.rcamp = rcamp
-        self.isobestic = isobestic
-        self.timestamps = timestamps
-        self.behavior_data = behavioral_data
+    def __init__(self, name, npm_file, behavioral_data=None):
+
+        # these should always be present
+        self.name = name
+        self.npm_file = npm_file
+        self.behavioral_data = behavioral_data
+
+        # read the file
+        fp_df = pd.read_csv(self.npm_file)
+
+        # drop last row if timeseries are unequal
+        if fp_df['Flags'][1] == fp_df['Flags'].iloc[-1]:
+            fp_df.drop(fp_df.index[-1], axis=0, inplace=True)
+
+
+        #isobestic will always be present so we shouldn't need to check anything
+        isobestic = fp_df[fp_df['Flags'] == 17]
+
+        # create essentially a dummy variable for ease of typing
+        columns = list(isobestic.columns)
+        if "Region0G" in columns:
+            conf1 = True
+        else:
+            conf1 = False
+
+        # slicing file based on flag values present in file
+        # this is a goddamned mess...please for the love of god if theres a better way show me
+        # literally brute force
+        if 18 and 20 in fp_df.Flags.values:
+            gcamp = fp_df[fp_df['Flags'] == 18]
+            rcamp = fp_df[fp_df['Flags'] == 20]
+            self.timestamps = [x.iloc[:, 1] - fp_df['Timestamp'][1] for x in [isobestic, gcamp, rcamp]]
+            if conf1:
+                self.gcamp = gcamp['Region0G']
+                self.rcamp = rcamp['Region1R']
+                self.isobestic = isobestic[['Region0G', 'Region1R']]
+            else:
+                self.gcamp = gcamp['Region1G']
+                self.rcamp = rcamp['Region0R']
+                self.isobestic = isobestic[['Region1G', 'Region0R']]
+        elif 20 not in fp_df.Flags.values:
+            gcamp = fp_df[fp_df['Flags'] == 18]
+            self.timestamps = [x.iloc[:, 1] - fp_df['Timestamp'][1] for x in [isobestic, gcamp]]
+            if conf1:
+                self.gcamp = gcamp['Region0G']
+                self.isobestic = isobestic['Region0G']
+            else:
+                self.gcamp = gcamp['Region1G']
+                self.isobestic = isobestic['Region1G']
+        elif 18 not in fp_df.Flags.values:
+            rcamp = fp_df[fp_df['Flags'] == 20]
+            self.timestamps = [x.iloc[:, 1] - fp_df['Timestamp'][1] for x in [isobestic, rcamp]]
+            if conf1:
+                self.rcamp = rcamp['Region1R']
+                self.isobestic = isobestic['Region1R']
+            else:
+                self.rcamp = rcamp['Region0R']
+                self.isobestic = isobestic['Region0R']
 
     @staticmethod
     def _als_detrend(y, lam=10e7, p=0.01, niter=100):
@@ -111,6 +123,7 @@ class fiberPhotometryCurve:
         smooth_signals = [self.smooth(raw,10, visual_check=False).flatten() for raw in signal]
         baselines = [self._als_detrend(raw) for raw in smooth_signals]
         df_f_signals = [self._df_f((smooth_signals[i]) - (baselines[i]), type='std') for i in range(len(smooth_signals))]
+
         # add dff_properties
         self.dff_gcamp = df_f_signals[0]
         self.dff_isobestic = np.vstack((np.array(df_f_signals[1]), np.array(df_f_signals[2])))
@@ -139,4 +152,4 @@ def raster(raster_array, cmap="coolwarm", event_or_heat='event'):
     plt.show()
     return
 
-
+mia1 = fiberPhotometryCurve('ee', '/Users/ryansenne/Downloads/Test_Pho_potato1_avoidance1.csv')
