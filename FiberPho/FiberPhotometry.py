@@ -2,10 +2,13 @@ import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
 import seaborn as sb
+from IPython import get_ipython
 from scipy import sparse
 from scipy.integrate import simpson
 from scipy.ndimage import uniform_filter1d
 from scipy.sparse.linalg import spsolve
+from scipy.signal import find_peaks
+from sklearn.linear_model import Lasso, LinearRegression
 
 
 class fiberPhotometryCurve:
@@ -49,7 +52,7 @@ class fiberPhotometryCurve:
             self.timestamps = [x.iloc[:, 1].reset_index(drop=True).tolist() - fp_df['Timestamp'][1] for x in
                                [isobestic, gcamp, rcamp]]
             if conf1:
-                self.gcamp = gcamp['Region0G']
+                self.gcamp = gcamp['Reyes gion0G']
                 self.rcamp = rcamp['Region1R']
                 self.isobestic = isobestic[['Region0G', 'Region1R']]
             else:
@@ -104,12 +107,12 @@ class fiberPhotometryCurve:
     def _df_f(raw, type="standard"):
         F0 = np.median(raw)
         if type == "standard":
-            df_f = abs((raw - F0) / F0)
+            df_f = (raw - F0) / F0
         else:
-            df_f = abs((raw - F0) / np.std(raw))
+            df_f = (raw - F0) / np.std(raw)
         return df_f
 
-    def process_data(self, exp_type='gcamp', type='standard'):
+    def process_data(self, exp_type='gcamp', type='standard', **kwargs):
         # this also seems like a terrible way to do it
         if exp_type == "dual_color":
             signal = [self.gcamp, self.rcamp, pd.Series(self.isobestic.iloc[:, 0]),
@@ -122,6 +125,12 @@ class fiberPhotometryCurve:
             self.dff_gcamp = df_f_signals[0]
             self.dff_rcamp = df_f_signals[1]
             self.dff_isobestic = np.vstack((np.array(df_f_signals[2]), np.array(df_f_signals[3])))
+
+            lin = Lasso(alpha=0.0001, precompute=True, max_iter=1000,
+                        positive=True, random_state=9999, selection='random')
+            n = len(self.dff_isobestic)
+            lin.fit(self.dff_isobestic.reshape(n, 1), self.dff_gcamp.reshape(n, 1))
+            reference = lin.predict(self.dff_isobestic.reshape(n, 1)).reshape(n, )
             # remove motion, add property
             self.final_df_gcamp = (self.dff_gcamp - pd.DataFrame(self.dff_isobestic).iloc[0, :]).flatten()
             self.final_df_rcamp = (self.dff_rcamp - pd.DataFrame(self.dff_isobestic)[1, :]).flatten()
@@ -134,8 +143,14 @@ class fiberPhotometryCurve:
             # add dff_properties
             self.dff_gcamp = df_f_signals[0]
             self.dff_isobestic = np.array(df_f_signals[1])
+            # stolen give credit later
+            lin = LinearRegression()
+            n = len(self.dff_isobestic)
+            x = lin.fit(self.dff_isobestic.reshape(n, 1), self.dff_gcamp.reshape(n, 1))
+            self.reference = lin.predict(self.dff_isobestic.reshape(n, 1)).reshape(n, )
             # remove motion, add property
-            self.final_df_gcamp = np.asarray(pd.Series(self.dff_gcamp) - pd.Series(self.dff_isobestic)).flatten()
+            self.final_df_gcamp = np.asarray(pd.Series(self.dff_gcamp) - pd.Series(self.reference)).flatten()
+
         elif exp_type == "rcamp":
             signal = [self.gcamp, pd.Series(self.isobestic)]
             smooth_signals = [self.smooth(raw, 10, visual_check=False).flatten() for raw in signal]
@@ -155,7 +170,7 @@ class fiberPhotometryCurve:
         area = calc_area(event_boundsL, event_boundR, self.final_df_gcamp)
         width = calc_widths(event_boundsL, event_boundR, self.timestamps[0])
         amps = calc_amps(event_boundsL, event_boundR, self.final_df_gcamp)
-        self.event_metrics = pd.DataFrame({"Area":area, "Width":width, "Amplitude":amps})
+        self.event_metrics = pd.DataFrame({"Area": area, "Width": width, "Amplitude": amps})
         return
 
     def find_beh(self):
@@ -231,6 +246,10 @@ def find_events(signal, type="standard"):
     # return a 1 where there is an event, a 0 where there is not
     return events
 
+def find_events_new(signal):
+    troughs, _ = find_peaks(-signal)
+    return troughs
+
 
 def event_triggered_average(self):
     pass
@@ -247,21 +266,22 @@ def raster(raster_array, cmap="coolwarm", event_or_heat='event'):
     return
 
 
-def make_3d_timeseries(timeseries, timestamps, x_axis, y_axis, z_axis, title=None):
+def make_3d_timeseries(timeseries, timestamps, x_axis, y_axis, z_axis, **kwargs):
     sb.set()
     if type(timeseries) != np.array:
         timeseries = np.asarray(timeseries)
     if type(timestamps) != np.array:
         timestamps = np.asarray(timestamps)
     if np.shape(timeseries) != np.shape(timestamps):
-        raise ValueError("Shape of timeseries and timestamp data do not match! Perhaps, try transposing?")
+        raise ValueError(
+            "Shape of timeseries and timestamp data do not match! Perhaps, try transposing? If not, you may have concaenated incorrectly.")
     y_coordinate_matrix = np.zeros(shape=(np.shape(timeseries)[0], np.shape(timeseries)[1]))
     for i in range(len(timeseries)):
         y_coordinate_matrix[i, :np.shape(timeseries)[1]] = i + 1
     fig = plt.figure()
     axs = plt.axes(projection="3d")
     for i in reversed(range(len(timeseries))):
-        axs.plot(timestamps[i], y_coordinate_matrix[i], timeseries[i], linewidth=2)
+        axs.plot(timestamps[i], y_coordinate_matrix[i], timeseries[i], **kwargs)
     axs.set_xlabel(x_axis)
     axs.set_ylabel(y_axis)
     axs.set_zlabel(z_axis)
@@ -274,98 +294,3 @@ def fix_npm_flags(npm_df):
     npm_df.rename(columns={"Flags": "LedState"}, inplace=True)
     npm_df.LedState.replace([16, 17, 18, 20], [0, 1, 2, 3], inplace=True)
     return npm_df
-
-
-###TESTING BITCHES###
-
-# from IPython import get_ipython
-#
-# get_ipython().run_line_magic('matplotlib', '')
-
-rebecca1 = fiberPhotometryCurve('1', '/Users/ryansenne/Desktop/Rebecca_Data/Test_Pho_FP_engram_day2_recall_mouse1.csv')
-rebecca2 = fiberPhotometryCurve('2', '/Users/ryansenne/Desktop/Rebecca_Data/Test_Pho_FP_engram_day2_recall_mouse2.csv')
-rebecca3 = fiberPhotometryCurve('3', '/Users/ryansenne/Desktop/Rebecca_Data/Test_Pho_FP_engram_day2_recall_mouse3.csv')
-rebecca4 = fiberPhotometryCurve('4', '/Users/ryansenne/Desktop/Rebecca_Data/Test_Pho_FP_engram_day3_opto_mouse1.csv')
-rebecca5 = fiberPhotometryCurve('5', '/Users/ryansenne/Desktop/Rebecca_Data/Test_Pho_FP_engram_day3_opto_mouse2.csv')
-rebecca6 = fiberPhotometryCurve('6', '/Users/ryansenne/Desktop/Rebecca_Data/Test_Pho_FP_engram_day3_opto_mouse3.csv')
-
-# rebecca_shock1 = fiberPhotometryCurve('1', '/Users/ryansenne/Desktop/Rebecca_Data/Test_Pho_astro1_day1_FC_60s.csv')
-# rebecca_shock2 = fiberPhotometryCurve('2', '/Users/ryansenne/Desktop/Rebecca_Data/Test_Pho_astro2_day1_FC_60s.csv')
-# rebecca_shock3 = fiberPhotometryCurve('3', '/Users/ryansenne/Desktop/Rebecca_Data/Test_Pho_astro11_day1_FC_60s.csv')
-# rebecca_shock4 = fiberPhotometryCurve('4', '/Users/ryansenne/Desktop/Rebecca_Data/Test_Pho_astro12_day1_FC_60s.csv')
-#
-#rebecca_shock5 = fiberPhotometryCurve('5',
-                                      #'/Users/ryansenne/Desktop/Rebecca_Data/Test_Pho_FP_engram_day1_FC_mouse1.csv')
-# rebecca_shock6 = fiberPhotometryCurve('6',
-#                                       '/Users/ryansenne/Desktop/Rebecca_Data/Test_Pho_FP_engram_day1_FC_mouse2.csv')
-# rebecca_shock7 = fiberPhotometryCurve('7',
-#                                       '/Users/ryansenne/Desktop/Rebecca_Data/Test_Pho_FP_engram_day1_FC_mouse3.csv')
-# rebecca_shock8 = fiberPhotometryCurve('8', '/Users/ryansenne/Desktop/Rebecca_Data/Test_Pho_FP_shock_1_1.5mA.csv')
-# rebecca_shock9 = fiberPhotometryCurve('9', '/Users/ryansenne/Desktop/Rebecca_Data/Test_Pho_FP_shock_3_1.5mA.csv')
-# rebecca_shock10 = fiberPhotometryCurve('10', '/Users/ryansenne/Desktop/Rebecca_Data/Test_Pho_FP_shock_4_1.0mA.csv')
-# rebecca_shock11 = fiberPhotometryCurve('11', '/Users/ryansenne/Desktop/Rebecca_Data/Test_Pho_FP_shock_5_1.0mA.csv')
-
-# rebecca_shock1.process_data()
-# rebecca_shock2.process_data()
-# rebecca_shock3.process_data()
-# rebecca_shock4.process_data()
-#rebecca_shock5.process_data()
-# rebecca_shock6.process_data()
-# rebecca_shock7.process_data()
-# rebecca_shock8.process_data()
-# rebecca_shock9.process_data()
-# rebecca_shock10.process_data()
-# rebecca_shock11.process_data()
-
-rebecca1.process_data(type="std")
-rebecca2.process_data(type="std")
-rebecca3.process_data(type="std")
-rebecca4.process_data(type="std")
-rebecca5.process_data(type="std")
-rebecca6.process_data(type="std")
-
-rebecca1.calculate_event_metrics_gcamp(type="std")
-rebecca2.calculate_event_metrics_gcamp(type="std")
-rebecca3.calculate_event_metrics_gcamp(type="std")
-rebecca4.calculate_event_metrics_gcamp(type="std")
-rebecca5.calculate_event_metrics_gcamp(type="std")
-rebecca6.calculate_event_metrics_gcamp(type="std")
-#
-# plt.figure("Recall")
-# rebecca_df_recall = np.hstack([rebecca1.final_df_gcamp[100:6600], rebecca2.final_df_gcamp[100:6600], rebecca3.final_df_gcamp[100:6600]])
-# sb.heatmap(rebecca_df_recall.T)
-# plt.show()
-#
-# plt.figure("Opto")
-# rebecca_df_opto = np.hstack([rebecca4.final_df_gcamp[100:10000], rebecca5.final_df_gcamp[100:10000], rebecca6.final_df_gcamp[100:10000]])
-# sb.heatmap(rebecca_df_opto.T)
-# plt.show()
-#
-# plt.figure('your mom bitch')
-# plt.plot(rebecca1.timestamps[0], rebecca1.final_df_gcamp)
-#
-# plt.show()
-
-
-# plt.figure('Ryan is Great')
-# rebecca_df_shock = np.hstack([rebecca_shock1.final_df_gcamp[1900:6800], rebecca_shock2.final_df_gcamp[1900:6800],
-#                               rebecca_shock3.final_df_gcamp[1900:6800], rebecca_shock4.final_df_gcamp[1900:6800]])
-#                               # rebecca_shock5.final_df_gcamp[1900:6800],
-#                               # rebecca_shock6.final_df_gcamp[1900:6800], rebecca_shock7.final_df_gcamp[1900:6800]])
-#
-# rebecca_df_shock_tstamps = np.vstack([rebecca_shock1.timestamps[1][1900:6800], rebecca_shock2.timestamps[1][1900:6800],
-#                                      rebecca_shock3.timestamps[1][1900:6800], rebecca_shock4.timestamps[1][1900:6800]])
-# rebecca_shock5.timestamps[1][1900:6800],
-# rebecca_shock6.timestamps[1][1900:6800],
-# rebecca_shock7.timestamps[1][1900:6800]])
-# sb.heatmap(rebecca_df_shock.T)
-# plt.show()
-
-# make_3d_timeseries(rebecca_df_shock.T, rebecca_df_shock_tstamps, "Time (s)", "Animal", "dF/F STDEV")
-# x, y = find_event_bounds([0,0,0,0,1,1,1,1,0,0,0,1,1,1,0])
-
-
-# plt.plot(rebecca_shock1.find_events(rebecca_shock1.final_df_gcamp))
-# plt.plot(rebecca_shock1.final_df_gcamp)
-
-
