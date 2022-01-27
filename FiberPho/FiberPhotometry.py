@@ -2,7 +2,7 @@ import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
 import seaborn as sb
-from IPython import get_ipython
+# from IPython import get_ipython
 from scipy import sparse
 from scipy.integrate import simpson
 from scipy.ndimage import uniform_filter1d
@@ -12,10 +12,9 @@ from sklearn.linear_model import Lasso, LinearRegression
 
 
 class fiberPhotometryCurve:
-    def __init__(self, name, npm_file, behavioral_data=None):
+    def __init__(self, npm_file, behavioral_data=None):
 
         # these should always be present
-        self.name = name
         self.npm_file = npm_file
         self.behavioral_data = behavioral_data
 
@@ -30,7 +29,7 @@ class fiberPhotometryCurve:
             pass
 
         # drop last row if timeseries are unequal
-        if fp_df['LedState'][1] == fp_df['LedState'].iloc[-1]:
+        while fp_df['LedState'].value_counts()[1] != fp_df['LedState'].value_counts()[2] or fp_df['LedState'].value_counts()[2] != fp_df['LedState'].value_counts()[4]:
             fp_df.drop(fp_df.index[-1], axis=0, inplace=True)
 
         # isobestic will always be present so we shouldn't need to check anything
@@ -46,13 +45,13 @@ class fiberPhotometryCurve:
         # slicing file based on flag values present in file
         # this is a goddamned mess...please for the love of god if theres a better way show me
         # literally brute force
-        if 2 and 3 in fp_df.LedState.values:
+        if 2 and 4 in fp_df.LedState.values:
             gcamp = fp_df[fp_df['LedState'] == 2]
-            rcamp = fp_df[fp_df['LedState'] == 3]
+            rcamp = fp_df[fp_df['LedState'] == 4]
             self.timestamps = [x.iloc[:, 1].reset_index(drop=True).tolist() - fp_df['Timestamp'][1] for x in
                                [isobestic, gcamp, rcamp]]
             if conf1:
-                self.gcamp = gcamp['Reyes gion0G']
+                self.gcamp = gcamp['Region0G']
                 self.rcamp = rcamp['Region1R']
                 self.isobestic = isobestic[['Region0G', 'Region1R']]
             else:
@@ -112,11 +111,11 @@ class fiberPhotometryCurve:
             df_f = (raw - F0) / np.std(raw)
         return df_f
 
-    def process_data(self, exp_type='gcamp', type='standard', **kwargs):
+    def process_data(self, exp_type='dual_color', type='standard', **kwargs):
         # this also seems like a terrible way to do it
         if exp_type == "dual_color":
-            signal = [self.gcamp, self.rcamp, pd.Series(self.isobestic.iloc[:, 0]),
-                      pd.Series(self.isobestic.iloc[:, 1])]
+            signal = [self.gcamp, self.rcamp, np.asarray(self.isobestic.iloc[:, 0]),
+                      np.asarray(self.isobestic.iloc[:, 1])]
             smooth_signals = [self.smooth(raw, 10, visual_check=False).flatten() for raw in signal]
             baselines = [self._als_detrend(raw) for raw in smooth_signals]
             df_f_signals = [self._df_f((smooth_signals[i]) - (baselines[i]), type=type) for i in
@@ -127,13 +126,15 @@ class fiberPhotometryCurve:
             self.dff_isobestic = np.vstack((np.array(df_f_signals[2]), np.array(df_f_signals[3])))
 
             lin = Lasso(alpha=0.0001, precompute=True, max_iter=1000,
-                        positive=True, random_state=9999, selection='random')
-            n = len(self.dff_isobestic)
-            lin.fit(self.dff_isobestic.reshape(n, 1), self.dff_gcamp.reshape(n, 1))
-            reference = lin.predict(self.dff_isobestic.reshape(n, 1)).reshape(n, )
+                         positive=True, random_state=9999, selection='random')
+            n = np.shape(self.dff_isobestic)[1]
+            ref1 = lin.fit(self.dff_isobestic[0].reshape(n, 1), self.dff_gcamp.reshape(n, 1))
+            ref2 = lin.fit(self.dff_isobestic[1].reshape(n, 1), self.dff_gcamp.reshape(n, 1))
+            self.reference = lin.predict(self.dff_isobestic[0].reshape(n, 1)).reshape(n, )
+            self.reference2 = lin.predict(self.dff_isobestic[1].reshape(n, 1)).reshape(n, )
             # remove motion, add property
-            self.final_df_gcamp = (self.dff_gcamp - pd.DataFrame(self.dff_isobestic).iloc[0, :]).flatten()
-            self.final_df_rcamp = (self.dff_rcamp - pd.DataFrame(self.dff_isobestic)[1, :]).flatten()
+            self.final_dff_gcamp = np.asarray(self.dff_gcamp - pd.Series(self.reference)).flatten()
+            self.final_dff_rcamp = np.asarray(self.dff_rcamp - pd.Series(self.reference2)).flatten()
         elif exp_type == "gcamp":
             signal = [self.gcamp, pd.Series(self.isobestic)]
             smooth_signals = [self.smooth(raw, 100, visual_check=False).flatten() for raw in signal]
@@ -149,7 +150,7 @@ class fiberPhotometryCurve:
             x = lin.fit(self.dff_isobestic.reshape(n, 1), self.dff_gcamp.reshape(n, 1))
             self.reference = lin.predict(self.dff_isobestic.reshape(n, 1)).reshape(n, )
             # remove motion, add property
-            self.final_df_gcamp = np.asarray(pd.Series(self.dff_gcamp) - pd.Series(self.reference)).flatten()
+            self.final_dff_gcamp = np.asarray(pd.Series(self.dff_gcamp) - pd.Series(self.reference)).flatten()
 
         elif exp_type == "rcamp":
             signal = [self.gcamp, pd.Series(self.isobestic)]
@@ -161,15 +162,19 @@ class fiberPhotometryCurve:
             self.dff_rcamp = df_f_signals[0]
             self.dff_isobestic = np.array(df_f_signals[1])
             # remove motion, add property
-            self.final_df_gcamp = pd.DataFame(self.dff_gcamp) - pd.DataFrame(self.dff_isobestic)
+            lin = LinearRegression()
+            n = len(self.dff_isobestic)
+            x = lin.fit(self.dff_isobestic.reshape(n, 1), self.dff_rcamp.reshape(n, 1))
+            self.reference = lin.predict(self.dff_isobestic.reshape(n, 1)).reshape(n, )
+            self.final_dff_rcamp = pd.DataFame(self.dff_rcamp) - pd.DataFrame(self.dff_isobestic)
         return
 
     def calculate_event_metrics_gcamp(self, type='standard'):
-        event_map = find_events(self.final_df_gcamp)
+        event_map = find_events(self.final_dff_gcamp)
         event_boundsL, event_boundR = find_event_bounds(event_map)
-        area = calc_area(event_boundsL, event_boundR, self.final_df_gcamp)
+        area = calc_area(event_boundsL, event_boundR, self.final_dff_gcamp)
         width = calc_widths(event_boundsL, event_boundR, self.timestamps[0])
-        amps = calc_amps(event_boundsL, event_boundR, self.final_df_gcamp)
+        amps = calc_amps(event_boundsL, event_boundR, self.final_dff_gcamp)
         self.event_metrics = pd.DataFrame({"Area": area, "Width": width, "Amplitude": amps})
         return
 
@@ -294,3 +299,11 @@ def fix_npm_flags(npm_df):
     npm_df.rename(columns={"Flags": "LedState"}, inplace=True)
     npm_df.LedState.replace([16, 17, 18, 20], [0, 1, 2, 3], inplace=True)
     return npm_df
+
+# rebecca1 = fiberPhotometryCurve('1', '/Users/ryansenne/Desktop/Rebecca_Data/Test_Pho_FP_engram_day2_recall_mouse1.csv')
+# rebecca2 = fiberPhotometryCurve('2', '/Users/ryansenne/Desktop/Rebecca_Data/Test_Pho_FP_engram_day2_recall_mouse2.csv')
+# rebecca1.process_data()
+# rebecca2.process_data()
+
+rebecca1 = fiberPhotometryCurve('/Users/ryansenne/Downloads/Test_Pho_m1_dual_FC.csv')
+rebecca1.process_data()
