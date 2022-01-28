@@ -2,13 +2,13 @@ import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
 import seaborn as sb
-# from IPython import get_ipython
 from scipy import sparse
 from scipy.integrate import simpson
 from scipy.ndimage import uniform_filter1d
 from scipy.sparse.linalg import spsolve
 from scipy.signal import find_peaks
 from sklearn.linear_model import Lasso, LinearRegression
+import pickle as pkl
 
 
 class fiberPhotometryCurve:
@@ -29,8 +29,15 @@ class fiberPhotometryCurve:
             pass
 
         # drop last row if timeseries are unequal
-        while fp_df['LedState'].value_counts()[1] != fp_df['LedState'].value_counts()[2] or fp_df['LedState'].value_counts()[2] != fp_df['LedState'].value_counts()[4]:
-            fp_df.drop(fp_df.index[-1], axis=0, inplace=True)
+        try:
+            while fp_df['LedState'].value_counts()[1] != fp_df['LedState'].value_counts()[2] or fp_df['LedState'].value_counts()[2] != fp_df['LedState'].value_counts()[4]:
+                fp_df.drop(fp_df.index[-1], axis=0, inplace=True)
+        except KeyError:
+            while fp_df['LedState'].value_counts()[1] != fp_df['LedState'].value_counts()[2]:
+                fp_df.drop(fp_df.index[-1], axis=0, inplace=True)
+        except:
+            while fp_df['LedState'].value_counts()[1] != fp_df['LedState'].value_counts()[4]:
+                fp_df.drop(fp_df.index[-1], axis=0, inplace=True)
 
         # isobestic will always be present so we shouldn't need to check anything
         isobestic = fp_df[fp_df['LedState'] == 1]
@@ -184,6 +191,11 @@ class fiberPhotometryCurve:
     def final_plot(self):
         pass
 
+    def save_fp(self, filepath, filename):
+        file = open(filepath, filename + '.pkl', 'wb')
+        pkl.dump(self, file)
+        file.close()
+        return
 
 def find_event_bounds(event_map):
     if type(event_map) != np.array:
@@ -300,10 +312,12 @@ def fix_npm_flags(npm_df):
     npm_df.LedState.replace([16, 17, 18, 20], [0, 1, 2, 3], inplace=True)
     return npm_df
 
+
+
 # rebecca1 = fiberPhotometryCurve('1', '/Users/ryansenne/Desktop/Rebecca_Data/Test_Pho_FP_engram_day2_recall_mouse1.csv')
 # rebecca2 = fiberPhotometryCurve('2', '/Users/ryansenne/Desktop/Rebecca_Data/Test_Pho_FP_engram_day2_recall_mouse2.csv')
 # rebecca1.process_data()
 # rebecca2.process_data()
 
-rebecca1 = fiberPhotometryCurve('/Users/ryansenne/Downloads/Test_Pho_m1_dual_FC.csv')
-rebecca1.process_data()
+rebecca1 = fiberPhotometryCurve('/Users/ryansenne/Desktop/Rebecca_Data/Test_Pho_FP_engram_day2_recall_mouse1.csv')
+# rebecca1.process_data()
