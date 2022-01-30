@@ -6,7 +6,7 @@ from scipy import sparse
 from scipy.integrate import simpson
 from scipy.ndimage import uniform_filter1d
 from scipy.sparse.linalg import spsolve
-from scipy.signal import find_peaks
+from scipy.signal import find_peaks, find_peaks_cwt
 from sklearn.linear_model import Lasso, LinearRegression
 import pickle as pkl
 
@@ -118,7 +118,7 @@ class fiberPhotometryCurve:
             df_f = (raw - F0) / np.std(raw)
         return df_f
 
-    def process_data(self, exp_type='dual_color', type='standard', **kwargs):
+    def process_data(self, exp_type='dual_color', type='std', **kwargs):
         # this also seems like a terrible way to do it
         if exp_type == "dual_color":
             signal = [self.gcamp, self.rcamp, np.asarray(self.isobestic.iloc[:, 0]),
@@ -191,8 +191,8 @@ class fiberPhotometryCurve:
     def final_plot(self):
         pass
 
-    def save_fp(self, filepath, filename):
-        file = open(filepath, filename + '.pkl', 'wb')
+    def save_fp(self, filename):
+        file = open(filename, 'wb')
         pkl.dump(self, file)
         file.close()
         return
@@ -312,6 +312,17 @@ def fix_npm_flags(npm_df):
     npm_df.LedState.replace([16, 17, 18, 20], [0, 1, 2, 3], inplace=True)
     return npm_df
 
+def find_signal(signal):
+    peaks, properties = find_peaks(signal, distance=75, width=25)
+    plt.plot(signal)
+    plt.plot(peaks, signal[peaks], "x")
+    plt.vlines(x=peaks, ymin=signal[peaks] - properties["prominences"],
+               ymax=signal[peaks], color="C1")
+    plt.hlines(y=properties["width_heights"], xmin=properties["left_ips"],
+               xmax=properties["right_ips"], color="C1")
+    plt.show()
+    return properties
+
 
 
 # rebecca1 = fiberPhotometryCurve('1', '/Users/ryansenne/Desktop/Rebecca_Data/Test_Pho_FP_engram_day2_recall_mouse1.csv')
@@ -320,4 +331,5 @@ def fix_npm_flags(npm_df):
 # rebecca2.process_data()
 
 rebecca1 = fiberPhotometryCurve('/Users/ryansenne/Desktop/Rebecca_Data/Test_Pho_FP_engram_day2_recall_mouse1.csv')
-# rebecca1.process_data()
+rebecca1.process_data(exp_type='gcamp')
+y = find_signal(rebecca1.final_dff_gcamp)
