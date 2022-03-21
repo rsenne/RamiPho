@@ -1,16 +1,18 @@
 [TO DO]
 
 Top Priority:
-	(2) Comment the fucking code jesus
-	(3) Error handling 
-	(4) Implement visual checks
- Medium Priority:
- 	(1) Mini Plots
- 	(2) Lab Meeting Plots
- 	(3) Explore moving average filter?
- 	(4) Python Executable for ease
- 	(5) Final plot with events, behavior, and average signal or
- 		individual
- Low Priority:
- 	(1) Your mom lol
- 	(2) GUI?
+	(1) Implement Howe approach to event definitions
+	(2) Descriptive Statistics i.e. t-test/anovas for widths, integrals, amplitude etc.
+	(3) Binning on/off + stats
+	(4) Calc frequencies w/in session + IEI
+Medium Priority:
+    (1) High res behavior
+    (2) Time locked behavior
+    (3) Triggered averages
+    (4) % signal change analysis
+Low priority:
+    (1) cute plots
+    (2) pythonic project structure
+
+
+Soft-deadline for at least 1 top priority... 3/14/22
