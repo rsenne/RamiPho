@@ -320,6 +320,13 @@ def find_signal(signal):
     plt.show()
     return peaks, properties
 
+def find_critical_width(signal, event_metrics_list):
+    return
+
+def calculate_event_ratio(trans_list):
+    negative_ele = sum(num for num in trans_list if num < 0)
+    positive_ele = sum(num for num in trans_list if num > 0)
+    return positive_ele/(positive_ele + negative_ele)
 
 
 # rebecca1 = fiberPhotometryCurve('1', '/Users/ryansenne/Desktop/Rebecca_Data/Test_Pho_FP_engram_day2_recall_mouse1.csv')
@@ -329,4 +336,3 @@ def find_signal(signal):
 
 rebecca1 = fiberPhotometryCurve('/home/ryansenne/Data/Rebecca/Test_Pho_FP_engram_day2_recall_mouse1.csv')
 rebecca1.process_data(exp_type='gcamp')
-x, y = find_signal(rebecca1.final_dff_gcamp)
