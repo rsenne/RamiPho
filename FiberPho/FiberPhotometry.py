@@ -144,7 +144,7 @@ class fiberPhotometryCurve:
             self.final_dff_rcamp = np.asarray(self.dff_rcamp - pd.Series(self.reference2)).flatten()
         elif exp_type == "gcamp":
             signal = [self.gcamp, pd.Series(self.isobestic)]
-            smooth_signals = [self.smooth(raw, 100, visual_check=False).flatten() for raw in signal]
+            smooth_signals = [self.smooth(raw, 10, visual_check=False).flatten() for raw in signal]
             baselines = [self._als_detrend(raw) for raw in smooth_signals]
             df_f_signals = [self._df_f((smooth_signals[i]) - (baselines[i]), type=type) for i in
                             range(len(smooth_signals))]
@@ -263,9 +263,6 @@ def find_events(signal, type="standard"):
     # return a 1 where there is an event, a 0 where there is not
     return events
 
-def find_events_new(signal):
-    troughs, _ = find_peaks(-signal)
-    return troughs
 
 
 def event_triggered_average(self):
@@ -309,11 +306,11 @@ def fix_npm_flags(npm_df):
     """This takes a preloaded npm_file i.e. you've ran pd.read_csv()"""
     # set inplace to True, so that we modify original DF and do not return a virtual copy
     npm_df.rename(columns={"Flags": "LedState"}, inplace=True)
-    npm_df.LedState.replace([16, 17, 18, 20], [0, 1, 2, 3], inplace=True)
+    npm_df.LedState.replace([16, 17, 18, 20], [0, 1, 2, 4], inplace=True)
     return npm_df
 
 def find_signal(signal):
-    peaks, properties = find_peaks(signal, distance=75, width=25)
+    peaks, properties = find_peaks(signal, height=0.0, distance=75, width=25)
     plt.plot(signal)
     plt.plot(peaks, signal[peaks], "x")
     plt.vlines(x=peaks, ymin=signal[peaks] - properties["prominences"],
@@ -321,7 +318,7 @@ def find_signal(signal):
     plt.hlines(y=properties["width_heights"], xmin=properties["left_ips"],
                xmax=properties["right_ips"], color="C1")
     plt.show()
-    return properties
+    return peaks, properties
 
 
 
@@ -330,6 +327,6 @@ def find_signal(signal):
 # rebecca1.process_data()
 # rebecca2.process_data()
 
-rebecca1 = fiberPhotometryCurve('/Users/ryansenne/Desktop/Rebecca_Data/Test_Pho_FP_engram_day2_recall_mouse1.csv')
+rebecca1 = fiberPhotometryCurve('/home/ryansenne/Data/Rebecca/Test_Pho_FP_engram_day2_recall_mouse1.csv')
 rebecca1.process_data(exp_type='gcamp')
-y = find_signal(rebecca1.final_dff_gcamp)
+x, y = find_signal(rebecca1.final_dff_gcamp)
