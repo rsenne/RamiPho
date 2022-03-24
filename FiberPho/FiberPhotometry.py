@@ -6,9 +6,10 @@ from scipy import sparse
 from scipy.integrate import simpson
 from scipy.ndimage import uniform_filter1d
 from scipy.sparse.linalg import spsolve
-from scipy.signal import find_peaks, find_peaks_cwt
+from scipy.signal import find_peaks
 from sklearn.linear_model import Lasso, LinearRegression
 import pickle as pkl
+import warnings as warn
 
 
 class fiberPhotometryCurve:
@@ -30,7 +31,8 @@ class fiberPhotometryCurve:
 
         # drop last row if timeseries are unequal
         try:
-            while fp_df['LedState'].value_counts()[1] != fp_df['LedState'].value_counts()[2] or fp_df['LedState'].value_counts()[2] != fp_df['LedState'].value_counts()[4]:
+            while fp_df['LedState'].value_counts()[1] != fp_df['LedState'].value_counts()[2] or \
+                    fp_df['LedState'].value_counts()[2] != fp_df['LedState'].value_counts()[4]:
                 fp_df.drop(fp_df.index[-1], axis=0, inplace=True)
         except KeyError:
             while fp_df['LedState'].value_counts()[1] != fp_df['LedState'].value_counts()[2]:
@@ -133,7 +135,7 @@ class fiberPhotometryCurve:
             self.dff_isobestic = np.vstack((np.array(df_f_signals[2]), np.array(df_f_signals[3])))
 
             lin = Lasso(alpha=0.0001, precompute=True, max_iter=1000,
-                         positive=True, random_state=9999, selection='random')
+                        positive=True, random_state=9999, selection='random')
             n = np.shape(self.dff_isobestic)[1]
             ref1 = lin.fit(self.dff_isobestic[0].reshape(n, 1), self.dff_gcamp.reshape(n, 1))
             ref2 = lin.fit(self.dff_isobestic[1].reshape(n, 1), self.dff_gcamp.reshape(n, 1))
@@ -196,6 +198,7 @@ class fiberPhotometryCurve:
         pkl.dump(self, file)
         file.close()
         return
+
 
 def find_event_bounds(event_map):
     if type(event_map) != np.array:
@@ -264,8 +267,8 @@ def find_events(signal, type="standard"):
     return events
 
 
+def event_triggered_average(signal_array):
 
-def event_triggered_average(self):
     pass
 
 
@@ -309,6 +312,7 @@ def fix_npm_flags(npm_df):
     npm_df.LedState.replace([16, 17, 18, 20], [0, 1, 2, 4], inplace=True)
     return npm_df
 
+
 def find_signal(signal):
     peaks, properties = find_peaks(signal, height=0.0, distance=75, width=25)
     plt.plot(signal)
@@ -320,13 +324,44 @@ def find_signal(signal):
     plt.show()
     return peaks, properties
 
-def find_critical_width(signal, event_metrics_list):
-    return
 
-def calculate_event_ratio(trans_list):
-    negative_ele = sum(num for num in trans_list if num < 0)
-    positive_ele = sum(num for num in trans_list if num > 0)
-    return positive_ele/(positive_ele + negative_ele)
+def find_alpha_omega(signal_indices, signal):
+    offsets = []
+    for i in signal_indices:
+        j = i
+        while signal[j] > np.median(signal):
+            j += 1
+        else:
+            offsets.append(j)
+    onsets = []
+    for i in reversed(signal_indices):
+        j = i
+        while signal[j] > np.median(signal):
+            j -= 1
+        else:
+            onsets.append(j)
+    return [element for element in reversed(onsets)], offsets
+
+
+def find_critical_width(pos_wid, neg_wid):
+    wid_list = list(set(pos_wid + neg_wid))
+    wid_list.sort()
+    if len(pos_wid) > 0 and len(neg_wid) == 0:
+        critical_width = 0
+        warn.warn('There are no negative going transients in your signal. This is not necessarily a problem, '
+                  'but you should confirm that this is truly the case!')
+    else:
+        i = 0
+        try:
+            while len(pos_wid) / (len(pos_wid) + len(neg_wid)) < 0.99:
+                pos_wid = [pos for pos in pos_wid if pos > wid_list[i]]
+                neg_wid = [neg for neg in neg_wid if neg > wid_list[i]]
+                i += 1
+            else:
+                critical_width = wid_list[i]
+        except ZeroDivisionError:
+            critical_width = wid_list[i]
+    return critical_width
 
 
 # rebecca1 = fiberPhotometryCurve('1', '/Users/ryansenne/Desktop/Rebecca_Data/Test_Pho_FP_engram_day2_recall_mouse1.csv')
@@ -336,3 +371,10 @@ def calculate_event_ratio(trans_list):
 
 rebecca1 = fiberPhotometryCurve('/home/ryansenne/Data/Rebecca/Test_Pho_FP_engram_day2_recall_mouse1.csv')
 rebecca1.process_data(exp_type='gcamp')
+plt.figure(1)
+x, y = find_signal(rebecca1.dff_gcamp)
+alpha, omega = find_alpha_omega(x, rebecca1.dff_gcamp)
+w = calc_widths(alpha, omega, rebecca1.timestamps[0])
+amp = calc_amps(alpha, omega, rebecca1.dff_gcamp)
+ar = calc_area(alpha, omega, rebecca1.dff_gcamp)
+crit_width = find_critical_width([1, 2, 3, 4], [2, 3, 3])
