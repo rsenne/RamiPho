@@ -1,3 +1,6 @@
+import pickle as pkl
+import warnings as warn
+
 import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
@@ -5,11 +8,9 @@ import seaborn as sb
 from scipy import sparse
 from scipy.integrate import simpson
 from scipy.ndimage import uniform_filter1d
-from scipy.sparse.linalg import spsolve
 from scipy.signal import find_peaks
+from scipy.sparse.linalg import spsolve
 from sklearn.linear_model import Lasso, LinearRegression
-import pickle as pkl
-import warnings as warn
 
 
 class fiberPhotometryCurve:
@@ -41,50 +42,73 @@ class fiberPhotometryCurve:
             while fp_df['LedState'].value_counts()[1] != fp_df['LedState'].value_counts()[4]:
                 fp_df.drop(fp_df.index[-1], axis=0, inplace=True)
 
+        if 2 and 4 in fp_df.LedState.values:
+            EXPERIMENT_TYPE = "DUAL_COLOR"
+        elif 4 not in fp_df.LedState.values:
+            EXPERIMENT_TYPE = "SINGLE_COLOR_GCAMP"
+        else:
+            EXPERIMENT_TYPE = "SINGLE_COLOR_RCAMP"
+
         # isobestic will always be present so we shouldn't need to check anything
         isobestic = fp_df[fp_df['LedState'] == 1]
 
         # create essentially a dummy variable for ease of typing
         columns = list(isobestic.columns)
         if "Region0G" in columns:
-            conf1 = True
+            CONF1 = True
         else:
-            conf1 = False
+            CONF1 = False
 
         # slicing file based on flag values present in file
         # this is a goddamned mess...please for the love of god if theres a better way show me
         # literally brute force
-        if 2 and 4 in fp_df.LedState.values:
+        if EXPERIMENT_TYPE == "DUAL_COLOR":
             gcamp = fp_df[fp_df['LedState'] == 2]
             rcamp = fp_df[fp_df['LedState'] == 4]
             self.timestamps = [x.iloc[:, 1].reset_index(drop=True).tolist() - fp_df['Timestamp'][1] for x in
                                [isobestic, gcamp, rcamp]]
-            if conf1:
+            if CONF1:
+                self.Signal = {"GCaMP": np.array(gcamp['Region0G']),
+                               "RCaMP": np.array(gcamp['Region1R']),
+                               "Isobestic_GCaMP": np.array(isobestic["Region0G"]),
+                               "Isobestic_RCaMP": np.array(isobestic["Region1R"])}
                 self.gcamp = gcamp['Region0G']
                 self.rcamp = rcamp['Region1R']
                 self.isobestic = isobestic[['Region0G', 'Region1R']]
             else:
+                self.Signal = {"GCaMP": np.array(gcamp['Region1G']),
+                               "RCaMP": np.array(gcamp['Region0R']),
+                               "Isobestic_GCaMP": np.array(isobestic["Region1G"]),
+                               "Isobestic_RCaMP": np.array(isobestic["Region0R"])}
                 self.gcamp = gcamp['Region1G']
                 self.rcamp = rcamp['Region0R']
                 self.isobestic = isobestic[['Region1G', 'Region0R']]
-        elif 3 not in fp_df.LedState.values:
+        elif 4 not in fp_df.LedState.values:
             gcamp = fp_df[fp_df['LedState'] == 2]
             self.timestamps = [x.iloc[:, 1].reset_index(drop=True).tolist() - fp_df['Timestamp'][1] for x in
                                [isobestic, gcamp]]
-            if conf1:
+            if CONF1:
+                self.Signal = {"SignalView": {"GCaMP": np.array(gcamp['Region0G']),
+                                              "Isobestic_GCaMP": np.array(isobestic["Region0G"])}}
                 self.gcamp = gcamp['Region0G']
                 self.isobestic = isobestic['Region0G']
             else:
+                self.Signal = {"SignalView": {"GCaMP": np.array(gcamp['Region1G']),
+                                              "Isobestic_GCaMP": np.array(isobestic["Region1G"])}}
                 self.gcamp = gcamp['Region1G']
                 self.isobestic = isobestic['Region1G']
         elif 2 not in fp_df.LedState.values:
             rcamp = fp_df[fp_df['LedState'] == 3]
             self.timestamps = [x.iloc[:, 1].reset_index(drop=True).tolist() - fp_df['Timestamp'][1] for x in
                                [isobestic, rcamp]]
-            if conf1:
+            if CONF1:
+                self.Signal = {"SignalView": {"RCaMP": np.array(rcamp['Region1R']),
+                                              "Isobestic_RCaMP": np.array(isobestic["Region1R"])}}
                 self.rcamp = rcamp['Region1R']
                 self.isobestic = isobestic['Region1R']
             else:
+                self.Signal = {"SignalView": {"RCaMP": np.array(rcamp['Region0R']),
+                                              "Isobestic_RCaMP": np.array(isobestic["Region0R"])}}
                 self.rcamp = rcamp['Region0R']
                 self.isobestic = isobestic['Region0R']
 
@@ -268,7 +292,6 @@ def find_events(signal, type="standard"):
 
 
 def event_triggered_average(signal_array):
-
     pass
 
 
@@ -367,14 +390,23 @@ def find_critical_width(pos_wid, neg_wid):
 # rebecca1 = fiberPhotometryCurve('1', '/Users/ryansenne/Desktop/Rebecca_Data/Test_Pho_FP_engram_day2_recall_mouse1.csv')
 # rebecca2 = fiberPhotometryCurve('2', '/Users/ryansenne/Desktop/Rebecca_Data/Test_Pho_FP_engram_day2_recall_mouse2.csv')
 # rebecca1.process_data()
-# rebecca2.process_data()
+# rebecca2.process_data()[
 
-rebecca1 = fiberPhotometryCurve('/home/ryansenne/Data/Rebecca/Test_Pho_FP_engram_day2_recall_mouse1.csv')
+rebecca1 = fiberPhotometryCurve('/home/ryansenne/Data/Rebecca/Test_Pho_engram_eYFP_m2_Recall.csv')
+rebecca2 = fiberPhotometryCurve('/home/ryansenne/Data/Rebecca/Test_Pho_engram_ChR2_m1_Recall.csv')
 rebecca1.process_data(exp_type='gcamp')
+rebecca2.process_data(exp_type='gcamp')
 plt.figure(1)
 x, y = find_signal(rebecca1.dff_gcamp)
+plt.figure(0)
+x1, y1 = find_signal(rebecca2.dff_gcamp)
+
 alpha, omega = find_alpha_omega(x, rebecca1.dff_gcamp)
+alpha1, omega1 = find_alpha_omega(x1, rebecca2.dff_gcamp)
 w = calc_widths(alpha, omega, rebecca1.timestamps[0])
 amp = calc_amps(alpha, omega, rebecca1.dff_gcamp)
 ar = calc_area(alpha, omega, rebecca1.dff_gcamp)
-crit_width = find_critical_width([1, 2, 3, 4], [2, 3, 3])
+
+w1 = calc_widths(alpha1, omega1, rebecca2.timestamps[0])
+amp1 = calc_amps(alpha1, omega1, rebecca2.dff_gcamp)
+ar1 = calc_area(alpha1, omega1, rebecca2.dff_gcamp)
