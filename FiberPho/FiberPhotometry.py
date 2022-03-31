@@ -1,16 +1,15 @@
 import pickle as pkl
 import warnings as warn
-
 import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
 import seaborn as sb
 from scipy import sparse
+from scipy.interpolate import splrep, splev
 from scipy.integrate import simpson
 from scipy.ndimage import uniform_filter1d
 from scipy.signal import find_peaks
 from scipy.sparse.linalg import spsolve
-from sklearn.linear_model import Lasso, LinearRegression
 
 
 class fiberPhotometryCurve:
@@ -25,7 +24,7 @@ class fiberPhotometryCurve:
 
         # check to see if using old files
         if "Flags" in fp_df.columns:
-            fp_df = fix_npm_flags(fp_df)
+            self.fix_npm_flags()
             print("Old NPM format detected, changing Flags to LedState")
         else:
             pass
@@ -43,74 +42,82 @@ class fiberPhotometryCurve:
                 fp_df.drop(fp_df.index[-1], axis=0, inplace=True)
 
         if 2 and 4 in fp_df.LedState.values:
-            EXPERIMENT_TYPE = "DUAL_COLOR"
-        elif 4 not in fp_df.LedState.values:
-            EXPERIMENT_TYPE = "SINGLE_COLOR_GCAMP"
+            self.__DUAL_COLOR = True
         else:
-            EXPERIMENT_TYPE = "SINGLE_COLOR_RCAMP"
-
-        # isobestic will always be present so we shouldn't need to check anything
-        isobestic = fp_df[fp_df['LedState'] == 1]
+            self.__DUAL_COLOR = False
 
         # create essentially a dummy variable for ease of typing
-        columns = list(isobestic.columns)
+        columns = list(fp_df.columns)
         if "Region0G" in columns:
-            CONF1 = True
+            self.__CONF1 = True
         else:
-            CONF1 = False
+            self.__CONF1 = False
 
         # slicing file based on flag values present in file
-        # this is a goddamned mess...please for the love of god if theres a better way show me
+        # this is a goddamned mess...please for the love of god if there's a better way show me
         # literally brute force
-        if EXPERIMENT_TYPE == "DUAL_COLOR":
+        if self.__DUAL_COLOR:
             gcamp = fp_df[fp_df['LedState'] == 2]
             rcamp = fp_df[fp_df['LedState'] == 4]
-            self.timestamps = [x.iloc[:, 1].reset_index(drop=True).tolist() - fp_df['Timestamp'][1] for x in
-                               [isobestic, gcamp, rcamp]]
-            if CONF1:
+
+            if self.__CONF1:
+                isobestic_gcamp = fp_df[fp_df.Region0G['LedState'] == 1]
+                isobestic_rcamp = fp_df[fp_df.Region1R['LedState'] == 1]
                 self.Signal = {"GCaMP": np.array(gcamp['Region0G']),
                                "RCaMP": np.array(gcamp['Region1R']),
-                               "Isobestic_GCaMP": np.array(isobestic["Region0G"]),
-                               "Isobestic_RCaMP": np.array(isobestic["Region1R"])}
-                self.gcamp = gcamp['Region0G']
-                self.rcamp = rcamp['Region1R']
-                self.isobestic = isobestic[['Region0G', 'Region1R']]
+                               "Isobestic_GCaMP": np.array(isobestic_gcamp),
+                               "Isobestic_RCaMP": np.array(isobestic_rcamp)}
+                self.isobestic = [isobestic_gcamp, isobestic_rcamp]
+                self.Timestamps = {signal: time.iloc[:, 1].reset_index(drop=True).tolist() - fp_df['Timestamp'][1] for
+                                   signal, time in zip(['Isobestic_GCMP', 'Isobestic_RCaMP', 'GCaMP', 'RCaMP'],
+                                                       [isobestic_gcamp, isobestic_rcamp, gcamp, rcamp])}
+
             else:
+                isobestic_gcamp = fp_df[fp_df.Region1G['LedState'] == 1]
+                isobestic_rcamp = fp_df[fp_df.Region0R['LedState'] == 1]
                 self.Signal = {"GCaMP": np.array(gcamp['Region1G']),
                                "RCaMP": np.array(gcamp['Region0R']),
-                               "Isobestic_GCaMP": np.array(isobestic["Region1G"]),
-                               "Isobestic_RCaMP": np.array(isobestic["Region0R"])}
-                self.gcamp = gcamp['Region1G']
-                self.rcamp = rcamp['Region0R']
-                self.isobestic = isobestic[['Region1G', 'Region0R']]
-        elif 4 not in fp_df.LedState.values:
-            gcamp = fp_df[fp_df['LedState'] == 2]
-            self.timestamps = [x.iloc[:, 1].reset_index(drop=True).tolist() - fp_df['Timestamp'][1] for x in
-                               [isobestic, gcamp]]
-            if CONF1:
-                self.Signal = {"SignalView": {"GCaMP": np.array(gcamp['Region0G']),
-                                              "Isobestic_GCaMP": np.array(isobestic["Region0G"])}}
-                self.gcamp = gcamp['Region0G']
-                self.isobestic = isobestic['Region0G']
-            else:
-                self.Signal = {"SignalView": {"GCaMP": np.array(gcamp['Region1G']),
-                                              "Isobestic_GCaMP": np.array(isobestic["Region1G"])}}
-                self.gcamp = gcamp['Region1G']
-                self.isobestic = isobestic['Region1G']
-        elif 2 not in fp_df.LedState.values:
-            rcamp = fp_df[fp_df['LedState'] == 3]
-            self.timestamps = [x.iloc[:, 1].reset_index(drop=True).tolist() - fp_df['Timestamp'][1] for x in
-                               [isobestic, rcamp]]
-            if CONF1:
-                self.Signal = {"SignalView": {"RCaMP": np.array(rcamp['Region1R']),
-                                              "Isobestic_RCaMP": np.array(isobestic["Region1R"])}}
-                self.rcamp = rcamp['Region1R']
-                self.isobestic = isobestic['Region1R']
-            else:
-                self.Signal = {"SignalView": {"RCaMP": np.array(rcamp['Region0R']),
-                                              "Isobestic_RCaMP": np.array(isobestic["Region0R"])}}
-                self.rcamp = rcamp['Region0R']
-                self.isobestic = isobestic['Region0R']
+                               "Isobestic_GCaMP": np.array(isobestic_gcamp),
+                               "Isobestic_RCaMP": np.array(isobestic_rcamp)}
+                self.Timestamps = {signal: time.iloc[:, 1].reset_index(drop=True).tolist() - fp_df['Timestamp'][1] for
+                                   signal, time in zip(['Isobestic_GCMP', 'Isobestic_RCaMP', 'GCaMP', 'RCaMP'],
+                                                       [isobestic_gcamp, isobestic_rcamp, gcamp, rcamp])}
+
+        elif not self.__DUAL_COLOR:
+            isobestic = fp_df[fp_df['LedState'] == 1]
+
+            try:
+                gcamp = fp_df[fp_df['LedState'] == 2]
+                self.Timestamps = {signal: time.iloc[:, 1].reset_index(drop=True).tolist() - fp_df['Timestamp'][1] for
+                                   signal, time in zip(['GCaMP_ISOBESTIC', 'GCaMP'], [isobestic, gcamp])}
+
+                if self.__CONF1:
+                    self.Signal = {"GCaMP": np.array(gcamp['Region0G']),
+                                   "Isobestic_GCaMP": np.array(isobestic["Region0G"])}
+
+                else:
+                    self.Signal = {"GCaMP": np.array(gcamp['Region1G']),
+                                   "Isobestic_GCaMP": np.array(isobestic["Region1G"])}
+
+
+            except KeyError:
+                rcamp = fp_df[fp_df['LedState'] == 3]
+                self.Timestamps = {signal: time.iloc[:, 1].reset_index(drop=True).tolist() - fp_df['Timestamp'][1] for
+                                   signal, time in zip(['RCaMP_ISOBESTIC', 'RCaMP'], [isobestic, rcamp])}
+                self.timestamps = [x.iloc[:, 1].reset_index(drop=True).tolist() - fp_df['Timestamp'][1] for x in
+                                   [isobestic, rcamp]]
+
+                if self.__CONF1:
+                    self.Signal = {"RCaMP": np.array(rcamp['Region1R']),
+                                   "Isobestic_RCaMP": np.array(isobestic["Region1R"])}
+
+                else:
+                    self.Signal = {"RCaMP": np.array(rcamp['Region0R']),
+                                   "Isobestic_RCaMP": np.array(isobestic["Region0R"])}
+        else:
+            raise ValueError("No experiment type matches your NPM File input. Make sure you've loaded the correct file.")
+
+        self.process_data()
 
     @staticmethod
     def _als_detrend(y, lam=10e7, p=0.01, niter=100):
@@ -119,12 +126,13 @@ class fiberPhotometryCurve:
         D = lam * D.dot(D.transpose())  # Precompute this term since it does not depend on `w`
         w = np.ones(L)
         W = sparse.spdiags(w, 0, L, L)
+        z = np.zeros(len(y))
         for i in range(niter):
             W.setdiag(w)  # Do not create a new matrix, just update diagonal values
             Z = W + D
             z = spsolve(Z, w * y)
             w = p * (y > z) + (1 - p) * (y < z)
-        return z
+        return y - z
 
     @staticmethod
     def smooth(signal, kernel, visual_check=True):
@@ -136,6 +144,12 @@ class fiberPhotometryCurve:
         return smooth_signal
 
     @staticmethod
+    def b_smooth(signal, timeseries, s=500):
+        knot_parms = splrep(timeseries, signal, s=s)
+        smoothed_signal = splev(timeseries, knot_parms)
+        return smoothed_signal
+
+    @staticmethod
     def _df_f(raw, type="standard"):
         F0 = np.median(raw)
         if type == "standard":
@@ -144,62 +158,13 @@ class fiberPhotometryCurve:
             df_f = (raw - F0) / np.std(raw)
         return df_f
 
-    def process_data(self, exp_type='dual_color', type='std', **kwargs):
-        # this also seems like a terrible way to do it
-        if exp_type == "dual_color":
-            signal = [self.gcamp, self.rcamp, np.asarray(self.isobestic.iloc[:, 0]),
-                      np.asarray(self.isobestic.iloc[:, 1])]
-            smooth_signals = [self.smooth(raw, 10, visual_check=False).flatten() for raw in signal]
-            baselines = [self._als_detrend(raw) for raw in smooth_signals]
-            df_f_signals = [self._df_f((smooth_signals[i]) - (baselines[i]), type=type) for i in
-                            range(len(smooth_signals))]
-            # add dff_properties
-            self.dff_gcamp = df_f_signals[0]
-            self.dff_rcamp = df_f_signals[1]
-            self.dff_isobestic = np.vstack((np.array(df_f_signals[2]), np.array(df_f_signals[3])))
 
-            lin = Lasso(alpha=0.0001, precompute=True, max_iter=1000,
-                        positive=True, random_state=9999, selection='random')
-            n = np.shape(self.dff_isobestic)[1]
-            ref1 = lin.fit(self.dff_isobestic[0].reshape(n, 1), self.dff_gcamp.reshape(n, 1))
-            ref2 = lin.fit(self.dff_isobestic[1].reshape(n, 1), self.dff_gcamp.reshape(n, 1))
-            self.reference = lin.predict(self.dff_isobestic[0].reshape(n, 1)).reshape(n, )
-            self.reference2 = lin.predict(self.dff_isobestic[1].reshape(n, 1)).reshape(n, )
-            # remove motion, add property
-            self.final_dff_gcamp = np.asarray(self.dff_gcamp - pd.Series(self.reference)).flatten()
-            self.final_dff_rcamp = np.asarray(self.dff_rcamp - pd.Series(self.reference2)).flatten()
-        elif exp_type == "gcamp":
-            signal = [self.gcamp, pd.Series(self.isobestic)]
-            smooth_signals = [self.smooth(raw, 10, visual_check=False).flatten() for raw in signal]
-            baselines = [self._als_detrend(raw) for raw in smooth_signals]
-            df_f_signals = [self._df_f((smooth_signals[i]) - (baselines[i]), type=type) for i in
-                            range(len(smooth_signals))]
-            # add dff_properties
-            self.dff_gcamp = df_f_signals[0]
-            self.dff_isobestic = np.array(df_f_signals[1])
-            # stolen give credit later
-            lin = LinearRegression()
-            n = len(self.dff_isobestic)
-            x = lin.fit(self.dff_isobestic.reshape(n, 1), self.dff_gcamp.reshape(n, 1))
-            self.reference = lin.predict(self.dff_isobestic.reshape(n, 1)).reshape(n, )
-            # remove motion, add property
-            self.final_dff_gcamp = np.asarray(pd.Series(self.dff_gcamp) - pd.Series(self.reference)).flatten()
-
-        elif exp_type == "rcamp":
-            signal = [self.gcamp, pd.Series(self.isobestic)]
-            smooth_signals = [self.smooth(raw, 10, visual_check=False).flatten() for raw in signal]
-            baselines = [self._als_detrend(raw) for raw in smooth_signals]
-            df_f_signals = [self._df_f((smooth_signals[i]) - (baselines[i]), type=type) for i in
-                            range(len(smooth_signals))]
-            # add dff_properties
-            self.dff_rcamp = df_f_signals[0]
-            self.dff_isobestic = np.array(df_f_signals[1])
-            # remove motion, add property
-            lin = LinearRegression()
-            n = len(self.dff_isobestic)
-            x = lin.fit(self.dff_isobestic.reshape(n, 1), self.dff_rcamp.reshape(n, 1))
-            self.reference = lin.predict(self.dff_isobestic.reshape(n, 1)).reshape(n, )
-            self.final_dff_rcamp = pd.DataFame(self.dff_rcamp) - pd.DataFrame(self.dff_isobestic)
+    def process_data(self):
+        signals = [signal for signal in self.Signal.values()]
+        baseline_corr_signal = [self._als_detrend(sig) for sig in signals]
+        df_f_signals = [self._df_f((s)) for s in baseline_corr_signal]
+        smoothed_signals = [self.b_smooth(timeseries, self.smooth(sigs, 10)) for timeseries, sigs in zip (df_f_signals, self.Timestamps.values())]
+        self.DF_F_Signals = {identity: signal for identity, signal in zip(self.Signal.keys(), smoothed_signals)}
         return
 
     def calculate_event_metrics_gcamp(self, type='standard'):
@@ -222,6 +187,13 @@ class fiberPhotometryCurve:
         pkl.dump(self, file)
         file.close()
         return
+
+    def fix_npm_flags(self):
+        """This takes a preloaded npm_file i.e. you've run pd.read_csv()"""
+        # set inplace to True, so that we modify original DF and do not return a virtual copy
+        self.npm_file.rename(columns={"Flags": "LedState"}, inplace=True)
+        self.npm_file.LedState.replace([16, 17, 18, 20], [0, 1, 2, 4], inplace=True)
+        return self.npm_file
 
 
 def find_event_bounds(event_map):
@@ -328,16 +300,8 @@ def make_3d_timeseries(timeseries, timestamps, x_axis, y_axis, z_axis, **kwargs)
     return
 
 
-def fix_npm_flags(npm_df):
-    """This takes a preloaded npm_file i.e. you've ran pd.read_csv()"""
-    # set inplace to True, so that we modify original DF and do not return a virtual copy
-    npm_df.rename(columns={"Flags": "LedState"}, inplace=True)
-    npm_df.LedState.replace([16, 17, 18, 20], [0, 1, 2, 4], inplace=True)
-    return npm_df
-
-
 def find_signal(signal):
-    peaks, properties = find_peaks(signal, height=0.0, distance=75, width=25)
+    peaks, properties = find_peaks(signal, height=1.0, distance=75, width=25, rel_height=0.95)
     plt.plot(signal)
     plt.plot(peaks, signal[peaks], "x")
     plt.vlines(x=peaks, ymin=signal[peaks] - properties["prominences"],
@@ -392,21 +356,27 @@ def find_critical_width(pos_wid, neg_wid):
 # rebecca1.process_data()
 # rebecca2.process_data()[
 
-rebecca1 = fiberPhotometryCurve('/home/ryansenne/Data/Rebecca/Test_Pho_engram_eYFP_m2_Recall.csv')
-rebecca2 = fiberPhotometryCurve('/home/ryansenne/Data/Rebecca/Test_Pho_engram_ChR2_m1_Recall.csv')
-rebecca1.process_data(exp_type='gcamp')
-rebecca2.process_data(exp_type='gcamp')
-plt.figure(1)
-x, y = find_signal(rebecca1.dff_gcamp)
-plt.figure(0)
-x1, y1 = find_signal(rebecca2.dff_gcamp)
+rebecca1 = fiberPhotometryCurve('/Users/ryansenne/Desktop/Rebecca_Data/Test_Pho_FP_engram_day2_recall_mouse1.csv')
+# rebecca2 = fiberPhotometryCurve('/home/ryansenne/Data/Rebecca/Test_Pho_engram_ChR2_m1_Recall.csv')
+# rebecca1.process_data(exp_type='gcamp')
+# rebecca1.process_data_2()
+# rebecca2.process_data(exp_type='gcamp')
+# plt.figure(1)
+# x, y = find_signal(rebecca1.dff_gcamp)
+# plt.figure(0)
+# x1, y1 = find_signal(rebecca2.dff_gcamp)
 
-alpha, omega = find_alpha_omega(x, rebecca1.dff_gcamp)
-alpha1, omega1 = find_alpha_omega(x1, rebecca2.dff_gcamp)
-w = calc_widths(alpha, omega, rebecca1.timestamps[0])
-amp = calc_amps(alpha, omega, rebecca1.dff_gcamp)
-ar = calc_area(alpha, omega, rebecca1.dff_gcamp)
+# alpha, omega = find_alpha_omega(x, rebecca1.dff_gcamp)
+# alpha1, omega1 = find_alpha_omega(x1, rebecca2.dff_gcamp)
+# w = calc_widths(alpha, omega, rebecca1.timestamps[0])
+# amp = calc_amps(alpha, omega, rebecca1.dff_gcamp)
+# ar = calc_area(alpha, omega, rebecca1.dff_gcamp)
+#
+# w1 = calc_widths(alpha1, omega1, rebecca2.timestamps[0])
+# amp1 = calc_amps(alpha1, omega1, rebecca2.dff_gcamp)
+# ar1 = calc_area(alpha1, omega1, rebecca2.dff_gcamp)
 
-w1 = calc_widths(alpha1, omega1, rebecca2.timestamps[0])
-amp1 = calc_amps(alpha1, omega1, rebecca2.dff_gcamp)
-ar1 = calc_area(alpha1, omega1, rebecca2.dff_gcamp)
+# fit = fast.estimate_spikes(rebecca1.dff_gcamp, 0.1, 0.1, True, True)
+# plt.plot(rebecca1.dff_gcamp)
+# for i in fit['spikes']:
+#     plt.axvline(i)
