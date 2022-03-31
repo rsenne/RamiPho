@@ -80,7 +80,7 @@ class fiberPhotometryCurve:
                                "Isobestic_GCaMP": np.array(isobestic_gcamp),
                                "Isobestic_RCaMP": np.array(isobestic_rcamp)}
                 self.Timestamps = {signal: time.iloc[:, 1].reset_index(drop=True).tolist() - fp_df['Timestamp'][1] for
-                                   signal, time in zip(['Isobestic_GCMP', 'Isobestic_RCaMP', 'GCaMP', 'RCaMP'],
+                                   signal, time in zip(['Isobestic_GCaMP', 'Isobestic_RCaMP', 'GCaMP', 'RCaMP'],
                                                        [isobestic_gcamp, isobestic_rcamp, gcamp, rcamp])}
 
         elif not self.__DUAL_COLOR:
@@ -89,7 +89,7 @@ class fiberPhotometryCurve:
             try:
                 gcamp = fp_df[fp_df['LedState'] == 2]
                 self.Timestamps = {signal: time.iloc[:, 1].reset_index(drop=True).tolist() - fp_df['Timestamp'][1] for
-                                   signal, time in zip(['GCaMP_ISOBESTIC', 'GCaMP'], [isobestic, gcamp])}
+                                   signal, time in zip(['GCaMP_Isobestic', 'GCaMP'], [isobestic, gcamp])}
 
                 if self.__CONF1:
                     self.Signal = {"GCaMP": np.array(gcamp['Region0G']),
@@ -115,9 +115,11 @@ class fiberPhotometryCurve:
                     self.Signal = {"RCaMP": np.array(rcamp['Region0R']),
                                    "Isobestic_RCaMP": np.array(isobestic["Region0R"])}
         else:
-            raise ValueError("No experiment type matches your NPM File input. Make sure you've loaded the correct file.")
+            raise ValueError(
+                "No experiment type matches your NPM File input. Make sure you've loaded the correct file.")
 
-        self.process_data()
+        self.DF_F_Signals = self.process_data()
+        self.peak_properties = self.find_signal()
 
     @staticmethod
     def _als_detrend(y, lam=10e7, p=0.01, niter=100):
@@ -135,7 +137,7 @@ class fiberPhotometryCurve:
         return y - z
 
     @staticmethod
-    def smooth(signal, kernel, visual_check=True):
+    def smooth(signal, kernel, visual_check=False):
         smooth_signal = uniform_filter1d(signal, kernel)
         if visual_check:
             plt.figure()
@@ -158,23 +160,37 @@ class fiberPhotometryCurve:
             df_f = (raw - F0) / np.std(raw)
         return df_f
 
-
     def process_data(self):
         signals = [signal for signal in self.Signal.values()]
         baseline_corr_signal = [self._als_detrend(sig) for sig in signals]
-        df_f_signals = [self._df_f((s)) for s in baseline_corr_signal]
-        smoothed_signals = [self.b_smooth(timeseries, self.smooth(sigs, 10)) for timeseries, sigs in zip (df_f_signals, self.Timestamps.values())]
-        self.DF_F_Signals = {identity: signal for identity, signal in zip(self.Signal.keys(), smoothed_signals)}
+        df_f_signals = [self._df_f(s) for s in baseline_corr_signal]
+        smoothed_signals = [self.b_smooth(timeseries, self.smooth(sigs, 10)) for timeseries, sigs in
+                            zip(df_f_signals, self.Timestamps.values())]
+        # setattr(fiberPhotometryCurve, 'DF_F_Signals',
+        #         {identity: signal for identity, signal in zip(self.Signal.keys(), smoothed_signals)})
+        return {identity: signal for identity, signal in zip(self.Signal.keys(), smoothed_signals)}
+
+    def find_signal(self):
+        peak_properties = {}
+        for GECI, sig in self.DF_F_Signals.items():
+            peaks, properties = find_peaks(sig, height=1.0, distance=75, width=25, rel_height=0.95)
+            properties['peaks'] = peaks
+            peak_properties[GECI] = properties
+        return peak_properties
+
+    def visual_check_peaks(self, signal):
+        if hasattr(fiberPhotometryCurve, "peak_properties"):
+            plt.figure()
+            plt.plot(self.DF_F_Signals[signal])
+            plt.plot(self.peak_properties[signal]['peaks'], self.DF_F_Signals[signal][self.peak_properties[signal]['peaks']], "x")
+            plt.vlines(x=self.peak_properties[signal]['peaks'], ymin=self.DF_F_Signals[signal][self.peak_properties[signal]['peaks']] - self.peak_properties[signal]["prominences"],
+               ymax=self.DF_F_Signals[signal][self.peak_properties[signal]['peaks']], color="C1")
+            plt.hlines(y=self.peak_properties[signal]["width_heights"], xmin=self.peak_properties[signal]["left_ips"],
+                xmax=self.peak_properties[signal]["right_ips"], color="C1")
+        else:
+            raise KeyError('f{signal} is not in {self}')
         return
 
-    def calculate_event_metrics_gcamp(self, type='standard'):
-        event_map = find_events(self.final_dff_gcamp)
-        event_boundsL, event_boundR = find_event_bounds(event_map)
-        area = calc_area(event_boundsL, event_boundR, self.final_dff_gcamp)
-        width = calc_widths(event_boundsL, event_boundR, self.timestamps[0])
-        amps = calc_amps(event_boundsL, event_boundR, self.final_dff_gcamp)
-        self.event_metrics = pd.DataFrame({"Area": area, "Width": width, "Amplitude": amps})
-        return
 
     def find_beh(self):
         pass
@@ -300,17 +316,6 @@ def make_3d_timeseries(timeseries, timestamps, x_axis, y_axis, z_axis, **kwargs)
     return
 
 
-def find_signal(signal):
-    peaks, properties = find_peaks(signal, height=1.0, distance=75, width=25, rel_height=0.95)
-    plt.plot(signal)
-    plt.plot(peaks, signal[peaks], "x")
-    plt.vlines(x=peaks, ymin=signal[peaks] - properties["prominences"],
-               ymax=signal[peaks], color="C1")
-    plt.hlines(y=properties["width_heights"], xmin=properties["left_ips"],
-               xmax=properties["right_ips"], color="C1")
-    plt.show()
-    return peaks, properties
-
 
 def find_alpha_omega(signal_indices, signal):
     offsets = []
@@ -356,27 +361,8 @@ def find_critical_width(pos_wid, neg_wid):
 # rebecca1.process_data()
 # rebecca2.process_data()[
 
-rebecca1 = fiberPhotometryCurve('/Users/ryansenne/Desktop/Rebecca_Data/Test_Pho_FP_engram_day2_recall_mouse1.csv')
-# rebecca2 = fiberPhotometryCurve('/home/ryansenne/Data/Rebecca/Test_Pho_engram_ChR2_m1_Recall.csv')
-# rebecca1.process_data(exp_type='gcamp')
-# rebecca1.process_data_2()
-# rebecca2.process_data(exp_type='gcamp')
-# plt.figure(1)
-# x, y = find_signal(rebecca1.dff_gcamp)
-# plt.figure(0)
-# x1, y1 = find_signal(rebecca2.dff_gcamp)
+# rebecca1 = fiberPhotometryCurve('/Users/ryansenne/Desktop/Rebecca_Data/Test_Pho_FP_engram_day2_recall_mouse1.csv')
+rebecca2 = fiberPhotometryCurve('/home/ryansenne/Data/Rebecca/Test_Pho_engram_ChR2_m1_Recall.csv')
+rebecca2.find_signal()
+# x,y = find_signal(rebecca2.DF_F_Signals['GCaMP'])
 
-# alpha, omega = find_alpha_omega(x, rebecca1.dff_gcamp)
-# alpha1, omega1 = find_alpha_omega(x1, rebecca2.dff_gcamp)
-# w = calc_widths(alpha, omega, rebecca1.timestamps[0])
-# amp = calc_amps(alpha, omega, rebecca1.dff_gcamp)
-# ar = calc_area(alpha, omega, rebecca1.dff_gcamp)
-#
-# w1 = calc_widths(alpha1, omega1, rebecca2.timestamps[0])
-# amp1 = calc_amps(alpha1, omega1, rebecca2.dff_gcamp)
-# ar1 = calc_area(alpha1, omega1, rebecca2.dff_gcamp)
-
-# fit = fast.estimate_spikes(rebecca1.dff_gcamp, 0.1, 0.1, True, True)
-# plt.plot(rebecca1.dff_gcamp)
-# for i in fit['spikes']:
-#     plt.axvline(i)
