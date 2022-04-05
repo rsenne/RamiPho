@@ -291,7 +291,10 @@ class fiberPhotometryExperiment:
                     group_list2.append(value)
             list_of_dicts.append({x + "-" + list(getattr(self, attr2).keys())[0]: group_list1})
             list_of_dicts.append({x + "-" + list(getattr(self, attr2).keys())[1]: group_list2})
-        return list_of_dicts
+            for d in list_of_dicts:
+                key = next(iter(d.keys()))
+                setattr(fiberPhotometryExperiment, key, d)
+        return
 
     # def comparative_statistics(self, task_val):
     #     for cond in self.treatment:
