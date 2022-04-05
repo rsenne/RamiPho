@@ -13,11 +13,14 @@ from scipy.sparse.linalg import spsolve
 
 
 class fiberPhotometryCurve:
-    def __init__(self, npm_file, behavioral_data=None):
+    def __init__(self, npm_file, behavioral_data=None, **kwargs):
 
         # these should always be present
         self.npm_file = npm_file
         self.behavioral_data = behavioral_data
+        for key, value in kwargs.items():
+            setattr(self, key, value)
+
 
         # read the file
         fp_df = pd.read_csv(self.npm_file)
@@ -121,6 +124,16 @@ class fiberPhotometryCurve:
         self.DF_F_Signals = self.process_data()
         self.peak_properties = self.find_signal()
 
+    def __iter__(self):
+        return iter(self.DF_F_Signals.values())
+
+    def __eq__(self, other):
+        return (isinstance(other, self.__class__)) and getattr(other, 'DF_F_Signals', None).values() == self.DF_F_Signals.values()
+
+    def __hash__(self):
+        return hash(self.DF_F_Signals.values())
+
+
     @staticmethod
     def _als_detrend(y, lam=10e7, p=0.01, niter=100):
         L = len(y)
@@ -166,8 +179,6 @@ class fiberPhotometryCurve:
         df_f_signals = [self._df_f(s) for s in baseline_corr_signal]
         smoothed_signals = [self.b_smooth(timeseries, self.smooth(sigs, 10)) for timeseries, sigs in
                             zip(df_f_signals, self.Timestamps.values())]
-        # setattr(fiberPhotometryCurve, 'DF_F_Signals',
-        #         {identity: signal for identity, signal in zip(self.Signal.keys(), smoothed_signals)})
         return {identity: signal for identity, signal in zip(self.Signal.keys(), smoothed_signals)}
 
     def find_signal(self):
@@ -188,15 +199,13 @@ class fiberPhotometryCurve:
             plt.hlines(y=self.peak_properties[signal]["width_heights"], xmin=self.peak_properties[signal]["left_ips"],
                 xmax=self.peak_properties[signal]["right_ips"], color="C1")
         else:
-            raise KeyError('f{signal} is not in {self}')
+            raise KeyError(f'{signal} is not in {self}')
         return
 
 
     def find_beh(self):
         pass
 
-    def final_plot(self):
-        pass
 
     def save_fp(self, filename):
         file = open(filename, 'wb')
@@ -210,6 +219,71 @@ class fiberPhotometryCurve:
         self.npm_file.rename(columns={"Flags": "LedState"}, inplace=True)
         self.npm_file.LedState.replace([16, 17, 18, 20], [0, 1, 2, 4], inplace=True)
         return self.npm_file
+
+class fiberPhotometryExperiment:
+    def __init__(self, *args):
+        self.treatment = {}
+        self.task={}
+
+        for arg in args:
+            if hasattr(arg, 'treatment'):
+                if arg.treatment not in self.treatment and not self.treatment:
+                    setattr(self, 'treatment', {arg.treatment:arg})
+                elif arg.treatment not in self.treatment and self.treatment:
+                    self.treatment[arg.treatment] = arg
+                elif arg.treatment in self.treatment:
+                    self.__add_to_attribute_dict__('treatment', arg, arg.treatment)
+                else:
+                    print('No treatment supplied, assuming all animals were given the same treatment.')
+
+            if hasattr(arg, 'task'):
+                if arg.task not in self.task and not self.task:
+                    setattr(self, 'task', {arg.task: arg})
+                elif arg.task not in self.task and self.task:
+                    self.task[arg.task] = arg
+                elif arg.task in self.task:
+                    self.__add_to_attribute_dict__('task', arg, arg.task)
+                else:
+                    print('No task supplied, assuming all animals are in the same group.')
+
+
+    def __add_to_attribute_dict__(self, attr, value, attr_val):
+        if hasattr(self, attr):
+            val_list = [x for x in getattr(self, attr).values()]
+            val_list.append(value)
+            setattr(self, attr, {attr_val:val_list})
+        else:
+            raise KeyError(f'{attr} not in {self}')
+
+
+    def __set_permutation_dicts__(self, attr1, attr2):
+        attr2_val_1 = [x for x in list(getattr(self, attr2).values())[0]]
+        list_of_dicts = []
+        for x, y in getattr(self, attr1).items():
+            group_list1 = []
+            group_list2 = []
+            for value in y:
+                if value in attr2_val_1:
+                    group_list1.append(value)
+                else:
+                    group_list2.append(value)
+            list_of_dicts.append({x + "-" + list(getattr(self, attr2).keys())[0]:group_list1})
+            list_of_dicts.append({x + "-" + list(getattr(self, attr2).keys())[0]:group_list2})
+        return list_of_dicts
+
+
+
+
+
+    # def comparative_statistics(self, task_val):
+    #     for cond in self.treatment:
+    #         for curve in self.task[task_val]:
+    #             if curve in self.treatment[cond]:
+
+
+
+
+
 
 
 def find_event_bounds(event_map):
@@ -361,8 +435,11 @@ def find_critical_width(pos_wid, neg_wid):
 # rebecca1.process_data()
 # rebecca2.process_data()[
 
-# rebecca1 = fiberPhotometryCurve('/Users/ryansenne/Desktop/Rebecca_Data/Test_Pho_FP_engram_day2_recall_mouse1.csv')
-rebecca2 = fiberPhotometryCurve('/home/ryansenne/Data/Rebecca/Test_Pho_engram_ChR2_m1_Recall.csv')
-rebecca2.find_signal()
-# x,y = find_signal(rebecca2.DF_F_Signals['GCaMP'])
+rebecca1 = fiberPhotometryCurve('/Users/ryansenne/Desktop/Rebecca_Data/Test_Pho_FP_engram_day2_recall_mouse1.csv', None, **{'treatment':'ChR2', 'task': 'recall'})
+rebecca2 = fiberPhotometryCurve('/Users/ryansenne/Desktop/Rebecca_Data/Test_Pho_FP_engram_day2_recall_mouse3.csv', None, **{'treatment':'eYFP', 'task': 'recall'})
+
+
+rebecca_exp = fiberPhotometryExperiment(rebecca1, rebecca2)
+rebecca_exp.__set_permutation_dicts__('task', 'treatment')
+
 
