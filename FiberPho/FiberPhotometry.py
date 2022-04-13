@@ -23,10 +23,10 @@ class fiberPhotometryCurve:
             setattr(self, key, value)
 
         # read the file
-        fp_df = pd.read_csv(self.npm_file)
+        self.fp_df = pd.read_csv(self.npm_file)
 
         # check to see if using old files
-        if "Flags" in fp_df.columns:
+        if "Flags" in self.fp_df.columns:
             self.fix_npm_flags()
             print("Old NPM format detected, changing Flags to LedState")
         else:
@@ -34,23 +34,23 @@ class fiberPhotometryCurve:
 
         # drop last row if timeseries are unequal
         try:
-            while fp_df['LedState'].value_counts()[1] != fp_df['LedState'].value_counts()[2] or \
-                    fp_df['LedState'].value_counts()[2] != fp_df['LedState'].value_counts()[4]:
-                fp_df.drop(fp_df.index[-1], axis=0, inplace=True)
+            while self.fp_df['LedState'].value_counts()[1] != self.fp_df['LedState'].value_counts()[2] or \
+                    self.fp_df['LedState'].value_counts()[2] != self.fp_df['LedState'].value_counts()[4]:
+                self.fp_df.drop(self.fp_df.index[-1], axis=0, inplace=True)
         except KeyError:
-            while fp_df['LedState'].value_counts()[1] != fp_df['LedState'].value_counts()[2]:
-                fp_df.drop(fp_df.index[-1], axis=0, inplace=True)
+            while self.fp_df['LedState'].value_counts()[1] != self.fp_df['LedState'].value_counts()[2]:
+                self.fp_df.drop(self.fp_df.index[-1], axis=0, inplace=True)
         except:
-            while fp_df['LedState'].value_counts()[1] != fp_df['LedState'].value_counts()[4]:
-                fp_df.drop(fp_df.index[-1], axis=0, inplace=True)
+            while self.fp_df['LedState'].value_counts()[1] != self.fp_df['LedState'].value_counts()[4]:
+                self.fp_df.drop(self.fp_df.index[-1], axis=0, inplace=True)
 
-        if 2 and 4 in fp_df.LedState.values:
+        if 2 and 4 in self.fp_df.LedState.values:
             self.__DUAL_COLOR = True
         else:
             self.__DUAL_COLOR = False
 
         # create essentially a dummy variable for ease of typing
-        columns = list(fp_df.columns)
+        columns = list(self.fp_df.columns)
         if "Region0G" in columns:
             self.__CONF1 = True
         else:
@@ -60,38 +60,38 @@ class fiberPhotometryCurve:
         # this is a goddamned mess...please for the love of god if there's a better way show me
         # literally brute force
         if self.__DUAL_COLOR:
-            gcamp = fp_df[fp_df['LedState'] == 2]
-            rcamp = fp_df[fp_df['LedState'] == 4]
+            gcamp = self.fp_df[self.fp_df['LedState'] == 2]
+            rcamp = self.fp_df[self.fp_df['LedState'] == 4]
 
             if self.__CONF1:
-                isobestic_gcamp = fp_df[fp_df.Region0G['LedState'] == 1]
-                isobestic_rcamp = fp_df[fp_df.Region1R['LedState'] == 1]
+                isobestic_gcamp = self.fp_df[self.fp_df.Region0G['LedState'] == 1]
+                isobestic_rcamp = self.fp_df[self.fp_df.Region1R['LedState'] == 1]
                 self.Signal = {"GCaMP": np.array(gcamp['Region0G']),
                                "RCaMP": np.array(gcamp['Region1R']),
                                "Isobestic_GCaMP": np.array(isobestic_gcamp),
                                "Isobestic_RCaMP": np.array(isobestic_rcamp)}
                 self.isobestic = [isobestic_gcamp, isobestic_rcamp]
-                self.Timestamps = {signal: time.iloc[:, 1].reset_index(drop=True).tolist() - fp_df['Timestamp'][1] for
+                self.Timestamps = {signal: time.iloc[:, 1].reset_index(drop=True).tolist() - self.fp_df['Timestamp'][1] for
                                    signal, time in zip(['Isobestic_GCMP', 'Isobestic_RCaMP', 'GCaMP', 'RCaMP'],
                                                        [isobestic_gcamp, isobestic_rcamp, gcamp, rcamp])}
 
             else:
-                isobestic_gcamp = fp_df[fp_df.Region1G['LedState'] == 1]
-                isobestic_rcamp = fp_df[fp_df.Region0R['LedState'] == 1]
+                isobestic_gcamp = self.fp_df[self.fp_df.Region1G['LedState'] == 1]
+                isobestic_rcamp = self.fp_df[self.fp_df.Region0R['LedState'] == 1]
                 self.Signal = {"GCaMP": np.array(gcamp['Region1G']),
                                "RCaMP": np.array(gcamp['Region0R']),
                                "Isobestic_GCaMP": np.array(isobestic_gcamp),
                                "Isobestic_RCaMP": np.array(isobestic_rcamp)}
-                self.Timestamps = {signal: time.iloc[:, 1].reset_index(drop=True).tolist() - fp_df['Timestamp'][1] for
+                self.Timestamps = {signal: time.iloc[:, 1].reset_index(drop=True).tolist() - self.fp_df['Timestamp'][1] for
                                    signal, time in zip(['Isobestic_GCaMP', 'Isobestic_RCaMP', 'GCaMP', 'RCaMP'],
                                                        [isobestic_gcamp, isobestic_rcamp, gcamp, rcamp])}
 
         elif not self.__DUAL_COLOR:
-            isobestic = fp_df[fp_df['LedState'] == 1]
+            isobestic = self.fp_df[self.fp_df['LedState'] == 1]
 
             try:
-                gcamp = fp_df[fp_df['LedState'] == 2]
-                self.Timestamps = {signal: time.iloc[:, 1].reset_index(drop=True).tolist() - fp_df['Timestamp'][1] for
+                gcamp = self.fp_df[self.fp_df['LedState'] == 2]
+                self.Timestamps = {signal: time.iloc[:, 1].reset_index(drop=True).tolist() - self.fp_df['Timestamp'][1] for
                                    signal, time in zip(['GCaMP_Isobestic', 'GCaMP'], [isobestic, gcamp])}
 
                 if self.__CONF1:
@@ -104,10 +104,10 @@ class fiberPhotometryCurve:
 
 
             except KeyError:
-                rcamp = fp_df[fp_df['LedState'] == 3]
-                self.Timestamps = {signal: time.iloc[:, 1].reset_index(drop=True).tolist() - fp_df['Timestamp'][1] for
+                rcamp = self.fp_df[self.fp_df['LedState'] == 3]
+                self.Timestamps = {signal: time.iloc[:, 1].reset_index(drop=True).tolist() - self.fp_df['Timestamp'][1] for
                                    signal, time in zip(['RCaMP_ISOBESTIC', 'RCaMP'], [isobestic, rcamp])}
-                self.timestamps = [x.iloc[:, 1].reset_index(drop=True).tolist() - fp_df['Timestamp'][1] for x in
+                self.timestamps = [x.iloc[:, 1].reset_index(drop=True).tolist() - self.fp_df['Timestamp'][1] for x in
                                    [isobestic, rcamp]]
 
                 if self.__CONF1:
@@ -123,14 +123,15 @@ class fiberPhotometryCurve:
 
         self.DF_F_Signals = self.process_data()
         self.peak_properties = self.find_signal()
+        self.condensed_stats = self.calc_avg_peak_props()
 
     def __iter__(self):
         return iter(list(self.DF_F_Signals.values()))
 
     def __eq__(self, other):
-        # if not isinstance(other, fiberPhotometryCurve):
-        #     raise TypeError("You can only compare the identity of a fiber photometry curve to another fiber "
-        #                     "photometry curve!!")
+        if not isinstance(other, fiberPhotometryCurve):
+            raise TypeError("You can only compare the identity of a fiber photometry curve to another fiber "
+                            "photometry curve!!")
         val1 = self.DF_F_Signals.values()
         val2 = other
         truthiness_array = [self.__arrays_equal__(a, b) for a, b in zip(val1, val2)]
@@ -152,8 +153,6 @@ class fiberPhotometryCurve:
                 return False
         return True
 
-    # def __hash__(self):
-    #     return hash(self.DF_F_Signals.values())
 
     @staticmethod
     def _als_detrend(y, lam=10e7, p=0.01, niter=100):
@@ -194,6 +193,11 @@ class fiberPhotometryCurve:
             df_f = (raw - F0) / np.std(raw)
         return df_f
 
+    @staticmethod
+    def calc_area(l_index, r_index, timeseries):
+        areas = np.asarray([simpson(timeseries[i:j]) for i, j in zip(l_index, r_index)])
+        return areas
+
     def process_data(self):
         signals = [signal for signal in self.Signal.values()]
         baseline_corr_signal = [self._als_detrend(sig) for sig in signals]
@@ -207,6 +211,7 @@ class fiberPhotometryCurve:
         for GECI, sig in self.DF_F_Signals.items():
             peaks, properties = find_peaks(sig, height=1.0, distance=75, width=25, rel_height=0.95)
             properties['peaks'] = peaks
+            properties['areas_under_curve'] = self.calc_area(properties['left_bases'], properties['right_bases'], self.DF_F_Signals[GECI])
             peak_properties[GECI] = properties
         return peak_properties
 
@@ -238,15 +243,25 @@ class fiberPhotometryCurve:
     def fix_npm_flags(self):
         """This takes a preloaded npm_file i.e. you've run pd.read_csv()"""
         # set inplace to True, so that we modify original DF and do not return a virtual copy
-        self.npm_file.rename(columns={"Flags": "LedState"}, inplace=True)
-        self.npm_file.LedState.replace([16, 17, 18, 20], [0, 1, 2, 4], inplace=True)
-        return self.npm_file
+        self.fp_df.rename(columns={"Flags": "LedState"}, inplace=True)
+        self.fp_df.LedState.replace([16, 17, 18, 20], [0, 1, 2, 4], inplace=True)
+        return
+
+
+    def calc_avg_peak_props(self, props=None):
+        if props is None:
+            props = ['widths', 'areas_under_curve', 'peak_heights']
+        condensed_props = {}
+        for signal in self.peak_properties:
+            condensed_props.update({signal:{"average" + "_" + prop: np.average(self.peak_properties[signal][prop]) for  prop in props}})
+        return condensed_props
 
 
 class fiberPhotometryExperiment:
     def __init__(self, *args):
         self.treatment = {}
         self.task = {}
+
 
         for arg in args:
             if hasattr(arg, 'treatment'):
@@ -296,81 +311,14 @@ class fiberPhotometryExperiment:
                 setattr(fiberPhotometryExperiment, key, d)
         return
 
-    # def comparative_statistics(self, task_val):
-    #     for cond in self.treatment:
-    #         for curve in self.task[task_val]:
-    #             if curve in self.treatment[cond]:
+    def comparative_statistics(self, group1, group2, metric):
+        y = list(getattr(self, group1).values())
+        sample1 = [x.condensed_stats['average' + '_' + metric] for x in list(x for x in getattr(self, group1).values())]
+        sample2 = [x.condensed_stats['average' + '_' + metric] for x in list(x for x in getattr(self, group2).values())]
+        return sample2
 
-
-def find_event_bounds(event_map):
-    if type(event_map) != np.array:
-        event_map = np.asarray(event_map)
-    else:
+    def event_triggered_average(signal_array):
         pass
-    event_map_shift = event_map[1:]
-    left_index = []
-    right_index = []
-    index = 0
-    for i, j in zip(event_map[:-1], event_map_shift):
-        if i and j:
-            index += 1
-        if not i and not j:
-            index += 1
-        if i and not j:
-            right_index.append(index)
-            index += 1
-        if not i and j:
-            left_index.append(index + 1)
-            index += 1
-        # else:
-        #     raise ValueError("Whoopsies, you've encountered a boundary condition please contact your nearest "
-        #                      "pythonista if this lasts four or more hours! In all seriousness please talk to Ryan, "
-        #                      "unless you are Ryan")
-        for i, j in zip(left_index, right_index):
-            if i == j:
-                left_index.remove(i)
-                right_index.remove(j)
-            else:
-                pass
-    return left_index, right_index
-
-
-def calc_widths(l_index, r_index, timestamps):
-    widths = np.asarray([timestamps[j] - timestamps[i] for i, j in zip(l_index, r_index)])
-    return widths
-
-
-def calc_amps(l_index, r_index, timeseries):
-    amps = np.asarray([np.max(timeseries[i:j]) for i, j in zip(l_index, r_index)])
-    return amps
-
-
-def calc_area(l_index, r_index, timeseries):
-    areas = np.asarray([simpson(timeseries[i:j]) for i, j in zip(l_index, r_index)])
-    return areas
-
-
-def find_events(signal, type="standard"):
-    """
-    Use this to determine where the df/f is greater than 3 times the standard deviation.
-        Since the std can be lower than one, we need an if/else statement because if the std
-        is lower than one, then we actually need where the signal is lower than that value otherwise
-        we won't find any events
-        """
-    # create a map of the trace
-    events = np.zeros(len(signal))
-    # standard deviation variable
-    std = np.std(signal)
-    if type == "standard":
-        events = np.where(signal < 3 * std, events, 1)
-    elif type == "std":
-        events = np.where(signal < 3, events, 1)
-    # return a 1 where there is an event, a 0 where there is not
-    return events
-
-
-def event_triggered_average(signal_array):
-    pass
 
 
 def raster(raster_array, cmap="coolwarm", event_or_heat='event'):
@@ -406,24 +354,6 @@ def make_3d_timeseries(timeseries, timestamps, x_axis, y_axis, z_axis, **kwargs)
     return
 
 
-def find_alpha_omega(signal_indices, signal):
-    offsets = []
-    for i in signal_indices:
-        j = i
-        while signal[j] > np.median(signal):
-            j += 1
-        else:
-            offsets.append(j)
-    onsets = []
-    for i in reversed(signal_indices):
-        j = i
-        while signal[j] > np.median(signal):
-            j -= 1
-        else:
-            onsets.append(j)
-    return [element for element in reversed(onsets)], offsets
-
-
 def find_critical_width(pos_wid, neg_wid):
     wid_list = list(set(pos_wid + neg_wid))
     wid_list.sort()
@@ -445,17 +375,16 @@ def find_critical_width(pos_wid, neg_wid):
     return critical_width
 
 
-# rebecca1 = fiberPhotometryCurve('1', '/Users/ryansenne/Desktop/Rebecca_Data/Test_Pho_FP_engram_day2_recall_mouse1.csv')
-# rebecca2 = fiberPhotometryCurve('2', '/Users/ryansenne/Desktop/Rebecca_Data/Test_Pho_FP_engram_day2_recall_mouse2.csv')
-# rebecca1.process_data()
-# rebecca2.process_data()[
-
-rebecca1 = fiberPhotometryCurve('/home/ryansenne/Data/Rebecca/Test_Pho_engram_ChR2_m1_Recall.csv', None,
+rebecca1 = fiberPhotometryCurve('/Users/ryansenne/Desktop/Rebecca_Data/Test_Pho_engram_ChR2_m1_Recall.csv', None,
                                 **{'treatment': 'ChR2', 'task': 'recall'})
-rebecca2 = fiberPhotometryCurve('/home/ryansenne/Data/Rebecca/Test_Pho_engram_eYFP_m1_Recall.csv', None,
+# rebecca1 = fiberPhotometryCurve('/Users/ryansenne/Desktop/Rebecca_Data/Test_Pho_FP_engram_day2_recall_mouse2.csv', None,
+#                                 **{'treatment': 'eYFP', 'task': 'recall'})
+
+# rebecca2 = fiberPhotometryCurve('/Users/ryansenne/Desktop/Rebecca_Data/Test_Pho_FP_engram_day2_recall_mouse1.csv', None,
+#                                 **{'treatment': 'ChR2', 'task': 'recall'})
+rebecca2 = fiberPhotometryCurve('/Users/ryansenne/Desktop/Rebecca_Data/Test_Pho_engram_eYFP_m1_Recall.csv', None,
                                 **{'treatment': 'eYFP', 'task': 'recall'})
 
 rebecca_exp = fiberPhotometryExperiment(rebecca1, rebecca2)
-z = [rebecca1]
-print(rebecca1 in z)
-print(rebecca_exp.__set_permutation_dicts__('task', 'treatment'))
+rebecca_exp.__set_permutation_dicts__('task', 'treatment')
+# rebecca_exp.comparative_statistics('recall-ChR2', 'recall-eYFP', 'peak_heights')
