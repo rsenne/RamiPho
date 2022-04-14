@@ -62,37 +62,37 @@ class fiberPhotometryCurve:
         if self.__DUAL_COLOR:
             gcamp = self.fp_df[self.fp_df['LedState'] == 2]
             rcamp = self.fp_df[self.fp_df['LedState'] == 4]
-
+            isobestic = self.fp_df[self.fp_df['LedState'] == 2]
             if self.__CONF1:
-                isobestic_gcamp = self.fp_df[self.fp_df.Region0G['LedState'] == 1]
-                isobestic_rcamp = self.fp_df[self.fp_df.Region1R['LedState'] == 1]
+                isobestic_gcamp = isobestic.Region0G
+                isobestic_rcamp = isobestic.Region1R
                 self.Signal = {"GCaMP": np.array(gcamp['Region0G']),
                                "RCaMP": np.array(gcamp['Region1R']),
                                "Isobestic_GCaMP": np.array(isobestic_gcamp),
                                "Isobestic_RCaMP": np.array(isobestic_rcamp)}
                 self.isobestic = [isobestic_gcamp, isobestic_rcamp]
                 self.Timestamps = {signal: time.iloc[:, 1].reset_index(drop=True).tolist() - self.fp_df['Timestamp'][1] for
-                                   signal, time in zip(['Isobestic_GCMP', 'Isobestic_RCaMP', 'GCaMP', 'RCaMP'],
-                                                       [isobestic_gcamp, isobestic_rcamp, gcamp, rcamp])}
+                                   signal, time in zip(['Isobestic_GCaMP', 'Isobestic_RCaMP', 'GCaMP', 'RCaMP'],
+                                                       [isobestic.Timestamp, isobestic.Timestamp, gcamp.Timestamp, rcamp.Timestamp])}
 
             else:
-                isobestic_gcamp = self.fp_df[self.fp_df.Region1G['LedState'] == 1]
-                isobestic_rcamp = self.fp_df[self.fp_df.Region0R['LedState'] == 1]
+                isobestic_gcamp = isobestic.Region1G
+                isobestic_rcamp = isobestic.Region0R
                 self.Signal = {"GCaMP": np.array(gcamp['Region1G']),
                                "RCaMP": np.array(gcamp['Region0R']),
                                "Isobestic_GCaMP": np.array(isobestic_gcamp),
                                "Isobestic_RCaMP": np.array(isobestic_rcamp)}
-                self.Timestamps = {signal: time.iloc[:, 1].reset_index(drop=True).tolist() - self.fp_df['Timestamp'][1] for
+                self.Timestamps = {signal: time.values.tolist() - self.fp_df['Timestamp'][1] for
                                    signal, time in zip(['Isobestic_GCaMP', 'Isobestic_RCaMP', 'GCaMP', 'RCaMP'],
-                                                       [isobestic_gcamp, isobestic_rcamp, gcamp, rcamp])}
+                                                       [isobestic.Timestamp, isobestic.Timestamp, gcamp.Timestamp, rcamp.Timestamp])}
 
         elif not self.__DUAL_COLOR:
             isobestic = self.fp_df[self.fp_df['LedState'] == 1]
 
             try:
                 gcamp = self.fp_df[self.fp_df['LedState'] == 2]
-                self.Timestamps = {signal: time.iloc[:, 1].reset_index(drop=True).tolist() - self.fp_df['Timestamp'][1] for
-                                   signal, time in zip(['GCaMP_Isobestic', 'GCaMP'], [isobestic, gcamp])}
+                self.Timestamps = {signal: time.values.tolist() - self.fp_df['Timestamp'][1] for
+                                   signal, time in zip(['GCaMP_Isobestic', 'GCaMP'], [isobestic.Timestamp, gcamp.Timestamp])}
 
                 if self.__CONF1:
                     self.Signal = {"GCaMP": np.array(gcamp['Region0G']),
@@ -105,10 +105,10 @@ class fiberPhotometryCurve:
 
             except KeyError:
                 rcamp = self.fp_df[self.fp_df['LedState'] == 3]
-                self.Timestamps = {signal: time.iloc[:, 1].reset_index(drop=True).tolist() - self.fp_df['Timestamp'][1] for
-                                   signal, time in zip(['RCaMP_ISOBESTIC', 'RCaMP'], [isobestic, rcamp])}
+                self.Timestamps = {signal: time.values.tolist() - self.fp_df['Timestamp'][1] for
+                                   signal, time in zip(['RCaMP_Isobestic', 'RCaMP'], [isobestic, rcamp])}
                 self.timestamps = [x.iloc[:, 1].reset_index(drop=True).tolist() - self.fp_df['Timestamp'][1] for x in
-                                   [isobestic, rcamp]]
+                                   [isobestic.Timestamp, rcamp.Timestamp]]
 
                 if self.__CONF1:
                     self.Signal = {"RCaMP": np.array(rcamp['Region1R']),
@@ -375,16 +375,17 @@ def find_critical_width(pos_wid, neg_wid):
     return critical_width
 
 
-rebecca1 = fiberPhotometryCurve('/Users/ryansenne/Desktop/Rebecca_Data/Test_Pho_engram_ChR2_m1_Recall.csv', None,
-                                **{'treatment': 'ChR2', 'task': 'recall'})
+# rebecca1 = fiberPhotometryCurve('/Users/ryansenne/Desktop/Rebecca_Data/Test_Pho_engram_ChR2_m1_Recall.csv', None,
+#                                 **{'treatment': 'ChR2', 'task': 'recall'})
 # rebecca1 = fiberPhotometryCurve('/Users/ryansenne/Desktop/Rebecca_Data/Test_Pho_FP_engram_day2_recall_mouse2.csv', None,
 #                                 **{'treatment': 'eYFP', 'task': 'recall'})
 
 # rebecca2 = fiberPhotometryCurve('/Users/ryansenne/Desktop/Rebecca_Data/Test_Pho_FP_engram_day2_recall_mouse1.csv', None,
 #                                 **{'treatment': 'ChR2', 'task': 'recall'})
-rebecca2 = fiberPhotometryCurve('/Users/ryansenne/Desktop/Rebecca_Data/Test_Pho_engram_eYFP_m1_Recall.csv', None,
-                                **{'treatment': 'eYFP', 'task': 'recall'})
+# rebecca2 = fiberPhotometryCurve('/Users/ryansenne/Desktop/Rebecca_Data/Test_Pho_engram_eYFP_m1_Recall.csv', None,
+#                                 **{'treatment': 'eYFP', 'task': 'recall'})
 
-rebecca_exp = fiberPhotometryExperiment(rebecca1, rebecca2)
-rebecca_exp.__set_permutation_dicts__('task', 'treatment')
+rebecca = fiberPhotometryCurve('/home/ryansenne/Data/Rebecca/Test_Pho_m1_dual_FC.csv')
+# rebecca_exp = fiberPhotometryExperiment(rebecca1, rebecca2)
+# rebecca_exp.__set_permutation_dicts__('task', 'treatment')
 # rebecca_exp.comparative_statistics('recall-ChR2', 'recall-eYFP', 'peak_heights')
