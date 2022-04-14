@@ -1,16 +1,18 @@
 import pickle as pkl
 import warnings as warn
+
 import matplotlib.pyplot as plt
+import numba as nb
 import numpy as np
 import pandas as pd
+import scipy.stats
 import seaborn as sb
 from scipy import sparse
-from scipy.interpolate import splrep, splev
 from scipy.integrate import simpson
+from scipy.interpolate import splrep, splev
 from scipy.ndimage import uniform_filter1d
 from scipy.signal import find_peaks
 from scipy.sparse.linalg import spsolve
-import numba as nb
 
 
 class fiberPhotometryCurve:
@@ -71,9 +73,11 @@ class fiberPhotometryCurve:
                                "Isobestic_GCaMP": np.array(isobestic_gcamp),
                                "Isobestic_RCaMP": np.array(isobestic_rcamp)}
                 self.isobestic = [isobestic_gcamp, isobestic_rcamp]
-                self.Timestamps = {signal: time.iloc[:, 1].reset_index(drop=True).tolist() - self.fp_df['Timestamp'][1] for
+                self.Timestamps = {signal: time.iloc[:, 1].reset_index(drop=True).tolist() - self.fp_df['Timestamp'][1]
+                                   for
                                    signal, time in zip(['Isobestic_GCaMP', 'Isobestic_RCaMP', 'GCaMP', 'RCaMP'],
-                                                       [isobestic.Timestamp, isobestic.Timestamp, gcamp.Timestamp, rcamp.Timestamp])}
+                                                       [isobestic.Timestamp, isobestic.Timestamp, gcamp.Timestamp,
+                                                        rcamp.Timestamp])}
 
             else:
                 isobestic_gcamp = isobestic.Region1G
@@ -84,7 +88,8 @@ class fiberPhotometryCurve:
                                "Isobestic_RCaMP": np.array(isobestic_rcamp)}
                 self.Timestamps = {signal: time.values.tolist() - self.fp_df['Timestamp'][1] for
                                    signal, time in zip(['Isobestic_GCaMP', 'Isobestic_RCaMP', 'GCaMP', 'RCaMP'],
-                                                       [isobestic.Timestamp, isobestic.Timestamp, gcamp.Timestamp, rcamp.Timestamp])}
+                                                       [isobestic.Timestamp, isobestic.Timestamp, gcamp.Timestamp,
+                                                        rcamp.Timestamp])}
 
         elif not self.__DUAL_COLOR:
             isobestic = self.fp_df[self.fp_df['LedState'] == 1]
@@ -92,7 +97,8 @@ class fiberPhotometryCurve:
             try:
                 gcamp = self.fp_df[self.fp_df['LedState'] == 2]
                 self.Timestamps = {signal: time.values.tolist() - self.fp_df['Timestamp'][1] for
-                                   signal, time in zip(['GCaMP_Isobestic', 'GCaMP'], [isobestic.Timestamp, gcamp.Timestamp])}
+                                   signal, time in
+                                   zip(['GCaMP_Isobestic', 'GCaMP'], [isobestic.Timestamp, gcamp.Timestamp])}
 
                 if self.__CONF1:
                     self.Signal = {"GCaMP": np.array(gcamp['Region0G']),
@@ -101,7 +107,6 @@ class fiberPhotometryCurve:
                 else:
                     self.Signal = {"GCaMP": np.array(gcamp['Region1G']),
                                    "Isobestic_GCaMP": np.array(isobestic["Region1G"])}
-
 
             except KeyError:
                 rcamp = self.fp_df[self.fp_df['LedState'] == 3]
@@ -153,7 +158,6 @@ class fiberPhotometryCurve:
                 return False
         return True
 
-
     @staticmethod
     def _als_detrend(y, lam=10e7, p=0.01, niter=100):
         L = len(y)
@@ -185,9 +189,9 @@ class fiberPhotometryCurve:
         return smoothed_signal
 
     @staticmethod
-    def _df_f(raw, type="standard"):
+    def _df_f(raw, kind="standard"):
         F0 = np.median(raw)
-        if type == "standard":
+        if kind == "standard":
             df_f = (raw - F0) / F0
         else:
             df_f = (raw - F0) / np.std(raw)
@@ -211,7 +215,8 @@ class fiberPhotometryCurve:
         for GECI, sig in self.DF_F_Signals.items():
             peaks, properties = find_peaks(sig, height=1.0, distance=75, width=25, rel_height=0.95)
             properties['peaks'] = peaks
-            properties['areas_under_curve'] = self.calc_area(properties['left_bases'], properties['right_bases'], self.DF_F_Signals[GECI])
+            properties['areas_under_curve'] = self.calc_area(properties['left_bases'], properties['right_bases'],
+                                                             self.DF_F_Signals[GECI])
             peak_properties[GECI] = properties
         return peak_properties
 
@@ -247,13 +252,13 @@ class fiberPhotometryCurve:
         self.fp_df.LedState.replace([16, 17, 18, 20], [0, 1, 2, 4], inplace=True)
         return
 
-
     def calc_avg_peak_props(self, props=None):
         if props is None:
             props = ['widths', 'areas_under_curve', 'peak_heights']
         condensed_props = {}
         for signal in self.peak_properties:
-            condensed_props.update({signal:{"average" + "_" + prop: np.average(self.peak_properties[signal][prop]) for  prop in props}})
+            condensed_props.update(
+                {signal: {"average" + "_" + prop: np.average(self.peak_properties[signal][prop]) for prop in props}})
         return condensed_props
 
 
@@ -262,13 +267,12 @@ class fiberPhotometryExperiment:
         self.treatment = {}
         self.task = {}
 
-
         for arg in args:
             if hasattr(arg, 'treatment'):
                 if arg.treatment not in self.treatment and not self.treatment:
-                    setattr(self, 'treatment', {arg.treatment: arg})
+                    setattr(self, 'treatment', {arg.treatment: [arg]})
                 elif arg.treatment not in self.treatment and self.treatment:
-                    self.treatment[arg.treatment] = arg
+                    self.treatment[arg.treatment] = [arg]
                 elif arg.treatment in self.treatment:
                     self.__add_to_attribute_dict__('treatment', arg, arg.treatment)
                 else:
@@ -276,9 +280,9 @@ class fiberPhotometryExperiment:
 
             if hasattr(arg, 'task'):
                 if arg.task not in self.task and not self.task:
-                    setattr(self, 'task', {arg.task: arg})
+                    setattr(self, 'task', {arg.task: [arg]})
                 elif arg.task not in self.task and self.task:
-                    self.task[arg.task] = arg
+                    self.task[arg.task] = [arg]
                 elif arg.task in self.task:
                     self.__add_to_attribute_dict__('task', arg, arg.task)
                 else:
@@ -286,15 +290,15 @@ class fiberPhotometryExperiment:
 
     def __add_to_attribute_dict__(self, attr, value, attr_val):
         if hasattr(self, attr):
-            val_list = [x for x in getattr(self, attr).values()]
+            val_list = getattr(self, attr)[attr_val]
             val_list.append(value)
-            setattr(self, attr, {attr_val: val_list})
+            getattr(self, attr)[attr_val] = val_list
         else:
             raise KeyError(f'{attr} not in {self}')
 
     def __set_permutation_dicts__(self, attr1, attr2):
         attr2_key_1 = next(iter(getattr(self, attr2).keys()))
-        p = [getattr(self, attr2)[attr2_key_1]]
+        p = getattr(self, attr2)[attr2_key_1]
         list_of_dicts = []
         for x, y in getattr(self, attr1).items():
             group_list1 = []
@@ -311,13 +315,15 @@ class fiberPhotometryExperiment:
                 setattr(fiberPhotometryExperiment, key, d)
         return
 
-    def comparative_statistics(self, group1, group2, metric):
-        y = list(getattr(self, group1).values())
-        sample1 = [x.condensed_stats['average' + '_' + metric] for x in list(x for x in getattr(self, group1).values())]
-        sample2 = [x.condensed_stats['average' + '_' + metric] for x in list(x for x in getattr(self, group2).values())]
-        return sample2
+    def comparative_statistics(self, group1, group2, metric, test=scipy.stats.ttest_ind):
+        s1 = [y for y in next(iter(getattr(self, group1).values()))]
+        s2 = [y for y in next(iter(getattr(self, group2).values()))]
+        sample1 = [x.condensed_stats['GCaMP']['average' + '_' + metric] for x in s1]
+        sample2 = [x.condensed_stats['GCaMP']['average' + '_' + metric] for x in s2]
+        stat, pval = test(sample1, sample2)
+        return stat, pval
 
-    def event_triggered_average(signal_array):
+    def event_triggered_average(self, signal_array):
         pass
 
 
@@ -340,11 +346,12 @@ def make_3d_timeseries(timeseries, timestamps, x_axis, y_axis, z_axis, **kwargs)
         timestamps = np.asarray(timestamps)
     if np.shape(timeseries) != np.shape(timestamps):
         raise ValueError(
-            "Shape of timeseries and timestamp data do not match! Perhaps, try transposing? If not, you may have concaenated incorrectly.")
+            "Shape of timeseries and timestamp data do not match! Perhaps, try transposing? If not, you may have "
+            "concatenated incorrectly.")
     y_coordinate_matrix = np.zeros(shape=(np.shape(timeseries)[0], np.shape(timeseries)[1]))
     for i in range(len(timeseries)):
         y_coordinate_matrix[i, :np.shape(timeseries)[1]] = i + 1
-    fig = plt.figure()
+    plt.figure()
     axs = plt.axes(projection="3d")
     for i in reversed(range(len(timeseries))):
         axs.plot(timestamps[i], y_coordinate_matrix[i], timeseries[i], **kwargs)
@@ -376,16 +383,24 @@ def find_critical_width(pos_wid, neg_wid):
 
 
 # rebecca1 = fiberPhotometryCurve('/Users/ryansenne/Desktop/Rebecca_Data/Test_Pho_engram_ChR2_m1_Recall.csv', None,
-#                                 **{'treatment': 'ChR2', 'task': 'recall'})
-# rebecca1 = fiberPhotometryCurve('/Users/ryansenne/Desktop/Rebecca_Data/Test_Pho_FP_engram_day2_recall_mouse2.csv', None,
-#                                 **{'treatment': 'eYFP', 'task': 'recall'})
+# **{'treatment': 'ChR2', 'task': 'recall'}) rebecca1 = fiberPhotometryCurve(
+# '/Users/ryansenne/Desktop/Rebecca_Data/Test_Pho_FP_engram_day2_recall_mouse2.csv', None, **{'treatment': 'eYFP',
+# 'task': 'recall'})
 
-# rebecca2 = fiberPhotometryCurve('/Users/ryansenne/Desktop/Rebecca_Data/Test_Pho_FP_engram_day2_recall_mouse1.csv', None,
-#                                 **{'treatment': 'ChR2', 'task': 'recall'})
-# rebecca2 = fiberPhotometryCurve('/Users/ryansenne/Desktop/Rebecca_Data/Test_Pho_engram_eYFP_m1_Recall.csv', None,
-#                                 **{'treatment': 'eYFP', 'task': 'recall'})
+# rebecca2 = fiberPhotometryCurve('/Users/ryansenne/Desktop/Rebecca_Data/Test_Pho_FP_engram_day2_recall_mouse1.csv',
+# None, **{'treatment': 'ChR2', 'task': 'recall'}) rebecca2 = fiberPhotometryCurve(
+# '/Users/ryansenne/Desktop/Rebecca_Data/Test_Pho_engram_eYFP_m1_Recall.csv', None, **{'treatment': 'eYFP',
+# 'task': 'recall'})
 
-rebecca = fiberPhotometryCurve('/home/ryansenne/Data/Rebecca/Test_Pho_m1_dual_FC.csv')
-# rebecca_exp = fiberPhotometryExperiment(rebecca1, rebecca2)
-# rebecca_exp.__set_permutation_dicts__('task', 'treatment')
-# rebecca_exp.comparative_statistics('recall-ChR2', 'recall-eYFP', 'peak_heights')
+rebecca = fiberPhotometryCurve('/home/ryansenne/Data/Rebecca/Test_Pho_engram_ChR2_m1_FC.csv', None, **{'treatment': 'ChR2', 'task': 'fc'})
+rebecca1 = fiberPhotometryCurve('/home/ryansenne/Data/Rebecca/Test_Pho_engram_ChR2_m2_FC.csv', None, **{'treatment': 'ChR2', 'task': 'fc'})
+rebecca2 = fiberPhotometryCurve('/home/ryansenne/Data/Rebecca/Test_Pho_engram_ChR2_m3_FC.csv', None, **{'treatment': 'ChR2', 'task': 'fc'})
+rebecca3 = fiberPhotometryCurve('/home/ryansenne/Data/Rebecca/Test_Pho_engram_ChR2_m4_FC.csv', None, **{'treatment': 'ChR2', 'task': 'fc'})
+rebecca4 = fiberPhotometryCurve('/home/ryansenne/Data/Rebecca/Test_Pho_engram_eYFP_m1_FC.csv', None, **{'treatment': 'eYFP', 'task': 'fc'})
+# rebecca5 = fiberPhotometryCurve('/home/ryansenne/Data/Rebecca/Test_Pho_engram_eYFP_m2_FC.csv', None, **{'treatment': 'eYFP', 'task': 'fc'})
+rebecca6 = fiberPhotometryCurve('/home/ryansenne/Data/Rebecca/Test_Pho_engram_eYFP_m3_FC.csv', None, **{'treatment': 'eYFP', 'task': 'fc'})
+rebecca7 = fiberPhotometryCurve('/home/ryansenne/Data/Rebecca/Test_Pho_engram_eYFP_m4_FC.csv', None, **{'treatment': 'eYFP', 'task': 'fc'})
+
+rebecca_exp = fiberPhotometryExperiment(rebecca, rebecca1, rebecca2, rebecca3, rebecca4, rebecca6, rebecca7)
+rebecca_exp.__set_permutation_dicts__('task', 'treatment')
+stat, pval = rebecca_exp.comparative_statistics('fc-ChR2', 'fc-eYFP', 'peak_heights')
