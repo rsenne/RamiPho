@@ -132,7 +132,7 @@ class fiberPhotometryCurve:
         self.DF_F_Signals = self.process_data()
         self.peak_properties = self.find_signal()
         self.neg_peak_properties = self.find_signal(neg=True)
-        self.condensed_stats = self.calc_avg_peak_props()
+        # self.condensed_stats = self.calc_avg_peak_props()
 
     def __iter__(self):
         return iter(list(self.DF_F_Signals.values()))
@@ -225,14 +225,14 @@ class fiberPhotometryCurve:
                 peaks, properties = find_peaks(sig, height=1.0, distance=75, width=25, rel_height=0.95)
                 properties['peaks'] = peaks
                 properties['areas_under_curve'] = self.calc_area(properties['left_bases'], properties['right_bases'],
-                                                             self.DF_F_Signals[GECI])
+                                                                 self.DF_F_Signals[GECI])
                 peak_properties[GECI] = properties
         else:
             for GECI, sig in self.DF_F_Signals.items():
                 peaks, properties = find_peaks(-sig, height=1.0, distance=75, width=25, rel_height=0.95)
                 properties['peaks'] = peaks
                 properties['areas_under_curve'] = self.calc_area(properties['left_bases'], properties['right_bases'],
-                                                             self.DF_F_Signals[GECI])
+                                                                 self.DF_F_Signals[GECI])
                 peak_properties[GECI] = properties
         return peak_properties
 
@@ -275,13 +275,21 @@ class fiberPhotometryCurve:
         for signal in self.peak_properties:
             condensed_props.update(
                 {signal: {"average" + "_" + prop: np.average(self.peak_properties[signal][prop]) for prop in props}})
+        setattr(self, "condensed_stats", condensed_props)
         return condensed_props
+
+    def reset_peak_params(self, crit_width, curve_type='GCaMP'):
+        deletion_list = [i for i, j in enumerate(self.peak_properties[curve_type]['widths']) if j < crit_width]
+        for prop in self.peak_properties[curve_type]:
+            self.peak_properties[curve_type][prop] = np.delete(self.peak_properties[curve_type][prop], deletion_list)
+        return
 
 
 class fiberPhotometryExperiment:
     def __init__(self, *args):
         self.treatment = {}
         self.task = {}
+        self.curves = [arg for arg in args]
 
         for arg in args:
             if hasattr(arg, 'treatment'):
@@ -305,6 +313,7 @@ class fiberPhotometryExperiment:
                     print('No task supplied, assuming all animals are in the same group.')
 
         self.__set_permutation_dicts__('task', 'treatment')
+        self.__set_crit_width__()
 
     def __add_to_attribute_dict__(self, attr, value, attr_val):
         if hasattr(self, attr):
@@ -331,6 +340,53 @@ class fiberPhotometryExperiment:
             for d in list_of_dicts:
                 key = next(iter(d.keys()))
                 setattr(fiberPhotometryExperiment, key, d)
+        return
+
+    @staticmethod
+    def __combine_all_lists__(*args):
+        combined_list = []
+        for list_x in args:
+            combined_list += list_x
+        return combined_list
+
+    def __get_curve_peak_attrs__(self, curve_type='GCaMP'):
+        pos_list = [x.peak_properties[curve_type]['widths'].tolist() for x in self.curves]
+        neg_list = [x.neg_peak_properties[curve_type]['widths'].tolist() for x in self.curves]
+        return self.__combine_all_lists__(*pos_list), self.__combine_all_lists__(*neg_list)
+
+    @staticmethod
+    def find_critical_width(pos_wid, neg_wid):
+        """
+        :param pos_wid:
+        :param neg_wid:
+        :return:
+        """
+        wid_list = list(set(pos_wid + neg_wid))
+        wid_list.sort()
+        if len(pos_wid) > 0 and len(neg_wid) == 0:
+            critical_width = 0
+            warn.warn('There are no negative going transients in your signal. This is not necessarily a problem, '
+                      'but you should confirm that this is truly the case!')
+        else:
+            i = 0
+            try:
+                while len(pos_wid) / (len(pos_wid) + len(neg_wid)) < 0.99:
+                    pos_wid = [pos for pos in pos_wid if pos > wid_list[i]]
+                    neg_wid = [neg for neg in neg_wid if neg > wid_list[i]]
+                    i += 1
+                else:
+                    critical_width = wid_list[i]
+            except ZeroDivisionError:
+                critical_width = wid_list[i]
+        return critical_width
+
+    def __set_crit_width__(self, curve_type='GCaMP'):
+        pos_list, neg_list = self.__get_curve_peak_attrs__(curve_type)
+        crit_wid = self.find_critical_width(pos_list, neg_list)
+        setattr(self, "crit_width", crit_wid)
+        for curve in self.curves:
+            curve.reset_peak_params(self.crit_width)
+            curve.calc_avg_peak_props()
         return
 
     def comparative_statistics(self, group1, group2, metric, curve='GCaMP', test=scipy.stats.ttest_ind):
@@ -382,53 +438,36 @@ def make_3d_timeseries(timeseries, timestamps, x_axis, y_axis, z_axis, **kwargs)
     return
 
 
-def find_critical_width(pos_wid, neg_wid):
-    """
-    :param pos_wid:
-    :param neg_wid:
-    :return:
-    """
-    wid_list = list(set(pos_wid + neg_wid))
-    wid_list.sort()
-    if len(pos_wid) > 0 and len(neg_wid) == 0:
-        critical_width = 0
-        warn.warn('There are no negative going transients in your signal. This is not necessarily a problem, '
-                  'but you should confirm that this is truly the case!')
-    else:
-        i = 0
-        try:
-            while len(pos_wid) / (len(pos_wid) + len(neg_wid)) < 0.99:
-                pos_wid = [pos for pos in pos_wid if pos > wid_list[i]]
-                neg_wid = [neg for neg in neg_wid if neg > wid_list[i]]
-                i += 1
-            else:
-                critical_width = wid_list[i]
-        except ZeroDivisionError:
-            critical_width = wid_list[i]
-    return critical_width
-
-
 if __name__ == '__main__':
-    rebecca1 = fiberPhotometryCurve('/Users/ryansenne/Desktop/Rebecca_Data/Test_Pho_engram_ChR2_m1_Recall.csv', None,
-    **{'treatment': 'ChR2', 'task': 'recall'})
-# '/Users/ryansenne/Desktop/Rebecca_Data/Test_Pho_FP_engram_day2_recall_mouse2.csv', None, **{'treatment': 'eYFP',
-# 'task': 'recall'})
+    # rebecca1 = fiberPhotometryCurve('/Users/ryansenne/Desktop/Rebecca_Data/Test_Pho_engram_ChR2_m1_Recall.csv', None,
+    # **{'treatment': 'ChR2', 'task': 'recall'})
+    # '/Users/ryansenne/Desktop/Rebecca_Data/Test_Pho_FP_engram_day2_recall_mouse2.csv', None, **{'treatment': 'eYFP',
+    # 'task': 'recall'})
 
-# rebecca2 = fiberPhotometryCurve('/Users/ryansenne/Desktop/Rebecca_Data/Test_Pho_FP_engram_day2_recall_mouse1.csv',
-# None, **{'treatment': 'ChR2', 'task': 'recall'}) rebecca2 = fiberPhotometryCurve(
-# '/Users/ryansenne/Desktop/Rebecca_Data/Test_Pho_engram_eYFP_m1_Recall.csv', None, **{'treatment': 'eYFP',
-# 'task': 'recall'})
+    # rebecca2 = fiberPhotometryCurve('/Users/ryansenne/Desktop/Rebecca_Data/Test_Pho_FP_engram_day2_recall_mouse1.csv',
+    # None, **{'treatment': 'ChR2', 'task': 'recall'}) rebecca2 = fiberPhotometryCurve(
+    # '/Users/ryansenne/Desktop/Rebecca_Data/Test_Pho_engram_eYFP_m1_Recall.csv', None, **{'treatment': 'eYFP',
+    # 'task': 'recall'})
 
-# rebecca = fiberPhotometryCurve('/home/ryansenne/Data/Rebecca/Test_Pho_engram_ChR2_m1_FC.csv', None, **{'treatment': 'ChR2', 'task': 'fc'})
-# rebecca1 = fiberPhotometryCurve('/home/ryansenne/Data/Rebecca/Test_Pho_engram_ChR2_m2_FC.csv', None, **{'treatment': 'ChR2', 'task': 'fc'})
-# rebecca2 = fiberPhotometryCurve('/home/ryansenne/Data/Rebecca/Test_Pho_engram_ChR2_m3_FC.csv', None, **{'treatment': 'ChR2', 'task': 'fc'})
-# rebecca3 = fiberPhotometryCurve('/home/ryansenne/Data/Rebecca/Test_Pho_engram_ChR2_m4_FC.csv', None, **{'treatment': 'ChR2', 'task': 'fc'})
-# rebecca4 = fiberPhotometryCurve('/home/ryansenne/Data/Rebecca/Test_Pho_engram_eYFP_m1_FC.csv', None, **{'treatment': 'eYFP', 'task': 'fc'})
-# rebecca5 = fiberPhotometryCurve('/home/ryansenne/Data/Rebecca/Test_Pho_engram_eYFP_m2_FC.csv', None, **{'treatment': 'eYFP', 'task': 'fc'})
-# rebecca6 = fiberPhotometryCurve('/home/ryansenne/Data/Rebecca/Test_Pho_engram_eYFP_m3_FC.csv', None, **{'treatment': 'eYFP', 'task': 'fc'})
-# rebecca7 = fiberPhotometryCurve('/home/ryansenne/Data/Rebecca/Test_Pho_engram_eYFP_m4_FC.csv', None, **{'treatment': 'eYFP', 'task': 'fc'})
+    rebecca = fiberPhotometryCurve('/home/ryansenne/Data/Rebecca/Test_Pho_engram_ChR2_m1_FC.csv', None,
+                                   **{'treatment': 'ChR2', 'task': 'fc'})
+    rebecca1 = fiberPhotometryCurve('/home/ryansenne/Data/Rebecca/Test_Pho_engram_ChR2_m2_FC.csv', None,
+                                    **{'treatment': 'ChR2', 'task': 'fc'})
+    rebecca2 = fiberPhotometryCurve('/home/ryansenne/Data/Rebecca/Test_Pho_engram_ChR2_m3_FC.csv', None,
+                                    **{'treatment': 'ChR2', 'task': 'fc'})
+    rebecca3 = fiberPhotometryCurve('/home/ryansenne/Data/Rebecca/Test_Pho_engram_ChR2_m4_FC.csv', None,
+                                    **{'treatment': 'ChR2', 'task': 'fc'})
+    rebecca4 = fiberPhotometryCurve('/home/ryansenne/Data/Rebecca/Test_Pho_engram_eYFP_m1_FC.csv', None,
+                                    **{'treatment': 'eYFP', 'task': 'fc'})
+    rebecca5 = fiberPhotometryCurve('/home/ryansenne/Data/Rebecca/Test_Pho_engram_eYFP_m2_FC.csv', None,
+                                    **{'treatment': 'eYFP', 'task': 'fc'})
+    rebecca6 = fiberPhotometryCurve('/home/ryansenne/Data/Rebecca/Test_Pho_engram_eYFP_m3_FC.csv', None,
+                                    **{'treatment': 'eYFP', 'task': 'fc'})
+    rebecca7 = fiberPhotometryCurve('/home/ryansenne/Data/Rebecca/Test_Pho_engram_eYFP_m4_FC.csv', None,
+                                    **{'treatment': 'eYFP', 'task': 'fc'})
 
-rebecca_test = fiberPhotometryCurve('/home/ryansenne/Data/Rebecca/Test_Pho_FP_engram_day2_recall_mouse1.csv', None, **{'treatment': 'eYFP', 'task': 'fc'})
+    # rebecca_test = fiberPhotometryCurve('/home/ryansenne/Data/Rebecca/Test_Pho_FP_engram_day2_recall_mouse1.csv', None, **{'treatment': 'eYFP', 'task': 'fc'})
 
-# rebecca_exp = fiberPhotometryExperiment(rebecca, rebecca1, rebecca2, rebecca3, rebecca4, rebecca6, rebecca7)
+    rebecca_exp = fiberPhotometryExperiment(rebecca, rebecca1, rebecca2, rebecca3, rebecca4, rebecca6, rebecca7)
+    # rebecca_exp.__set_crit_width__()
 # stat, pval = rebecca_exp.comparative_statistics('fc-ChR2', 'fc-eYFP', 'peak_heights')
