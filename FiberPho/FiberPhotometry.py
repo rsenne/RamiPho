@@ -1,6 +1,5 @@
 import pickle as pkl
 import warnings as warn
-
 import matplotlib.pyplot as plt
 import numba as nb
 import numpy as np
@@ -171,6 +170,7 @@ class fiberPhotometryCurve:
             Z = W + D
             z = spsolve(Z, w * y)
             w = p * (y > z) + (1 - p) * (y < z)
+
         return y - z
 
     @staticmethod
@@ -206,6 +206,9 @@ class fiberPhotometryCurve:
         signals = [signal for signal in self.Signal.values()]
         baseline_corr_signal = [self._als_detrend(sig) for sig in signals]
         df_f_signals = [self._df_f(s) for s in baseline_corr_signal]
+        for i in range(len(df_f_signals)):
+            if abs(np.median(df_f_signals[i])) < 0.05:
+                df_f_signals[i] = self._als_detrend(df_f_signals[i])
         smoothed_signals = [self.b_smooth(timeseries, self.smooth(sigs, 10)) for timeseries, sigs in
                             zip(df_f_signals, self.Timestamps.values())]
         return {identity: signal for identity, signal in zip(self.Signal.keys(), smoothed_signals)}
@@ -288,6 +291,8 @@ class fiberPhotometryExperiment:
                 else:
                     print('No task supplied, assuming all animals are in the same group.')
 
+        self.__set_permutation_dicts__('task', 'treatment')
+
     def __add_to_attribute_dict__(self, attr, value, attr_val):
         if hasattr(self, attr):
             val_list = getattr(self, attr)[attr_val]
@@ -315,11 +320,11 @@ class fiberPhotometryExperiment:
                 setattr(fiberPhotometryExperiment, key, d)
         return
 
-    def comparative_statistics(self, group1, group2, metric, test=scipy.stats.ttest_ind):
+    def comparative_statistics(self, group1, group2, metric, curve='GCaMP', test=scipy.stats.ttest_ind):
         s1 = [y for y in next(iter(getattr(self, group1).values()))]
         s2 = [y for y in next(iter(getattr(self, group2).values()))]
-        sample1 = [x.condensed_stats['GCaMP']['average' + '_' + metric] for x in s1]
-        sample2 = [x.condensed_stats['GCaMP']['average' + '_' + metric] for x in s2]
+        sample1 = [x.condensed_stats[curve]['average' + '_' + metric] for x in s1]
+        sample2 = [x.condensed_stats[curve]['average' + '_' + metric] for x in s2]
         stat, pval = test(sample1, sample2)
         return stat, pval
 
@@ -382,6 +387,7 @@ def find_critical_width(pos_wid, neg_wid):
     return critical_width
 
 
+
 # rebecca1 = fiberPhotometryCurve('/Users/ryansenne/Desktop/Rebecca_Data/Test_Pho_engram_ChR2_m1_Recall.csv', None,
 # **{'treatment': 'ChR2', 'task': 'recall'}) rebecca1 = fiberPhotometryCurve(
 # '/Users/ryansenne/Desktop/Rebecca_Data/Test_Pho_FP_engram_day2_recall_mouse2.csv', None, **{'treatment': 'eYFP',
@@ -392,15 +398,16 @@ def find_critical_width(pos_wid, neg_wid):
 # '/Users/ryansenne/Desktop/Rebecca_Data/Test_Pho_engram_eYFP_m1_Recall.csv', None, **{'treatment': 'eYFP',
 # 'task': 'recall'})
 
-rebecca = fiberPhotometryCurve('/home/ryansenne/Data/Rebecca/Test_Pho_engram_ChR2_m1_FC.csv', None, **{'treatment': 'ChR2', 'task': 'fc'})
-rebecca1 = fiberPhotometryCurve('/home/ryansenne/Data/Rebecca/Test_Pho_engram_ChR2_m2_FC.csv', None, **{'treatment': 'ChR2', 'task': 'fc'})
-rebecca2 = fiberPhotometryCurve('/home/ryansenne/Data/Rebecca/Test_Pho_engram_ChR2_m3_FC.csv', None, **{'treatment': 'ChR2', 'task': 'fc'})
-rebecca3 = fiberPhotometryCurve('/home/ryansenne/Data/Rebecca/Test_Pho_engram_ChR2_m4_FC.csv', None, **{'treatment': 'ChR2', 'task': 'fc'})
-rebecca4 = fiberPhotometryCurve('/home/ryansenne/Data/Rebecca/Test_Pho_engram_eYFP_m1_FC.csv', None, **{'treatment': 'eYFP', 'task': 'fc'})
+# rebecca = fiberPhotometryCurve('/home/ryansenne/Data/Rebecca/Test_Pho_engram_ChR2_m1_FC.csv', None, **{'treatment': 'ChR2', 'task': 'fc'})
+# rebecca1 = fiberPhotometryCurve('/home/ryansenne/Data/Rebecca/Test_Pho_engram_ChR2_m2_FC.csv', None, **{'treatment': 'ChR2', 'task': 'fc'})
+# rebecca2 = fiberPhotometryCurve('/home/ryansenne/Data/Rebecca/Test_Pho_engram_ChR2_m3_FC.csv', None, **{'treatment': 'ChR2', 'task': 'fc'})
+# rebecca3 = fiberPhotometryCurve('/home/ryansenne/Data/Rebecca/Test_Pho_engram_ChR2_m4_FC.csv', None, **{'treatment': 'ChR2', 'task': 'fc'})
+# rebecca4 = fiberPhotometryCurve('/home/ryansenne/Data/Rebecca/Test_Pho_engram_eYFP_m1_FC.csv', None, **{'treatment': 'eYFP', 'task': 'fc'})
 # rebecca5 = fiberPhotometryCurve('/home/ryansenne/Data/Rebecca/Test_Pho_engram_eYFP_m2_FC.csv', None, **{'treatment': 'eYFP', 'task': 'fc'})
-rebecca6 = fiberPhotometryCurve('/home/ryansenne/Data/Rebecca/Test_Pho_engram_eYFP_m3_FC.csv', None, **{'treatment': 'eYFP', 'task': 'fc'})
-rebecca7 = fiberPhotometryCurve('/home/ryansenne/Data/Rebecca/Test_Pho_engram_eYFP_m4_FC.csv', None, **{'treatment': 'eYFP', 'task': 'fc'})
+# rebecca6 = fiberPhotometryCurve('/home/ryansenne/Data/Rebecca/Test_Pho_engram_eYFP_m3_FC.csv', None, **{'treatment': 'eYFP', 'task': 'fc'})
+# rebecca7 = fiberPhotometryCurve('/home/ryansenne/Data/Rebecca/Test_Pho_engram_eYFP_m4_FC.csv', None, **{'treatment': 'eYFP', 'task': 'fc'})
 
-rebecca_exp = fiberPhotometryExperiment(rebecca, rebecca1, rebecca2, rebecca3, rebecca4, rebecca6, rebecca7)
-rebecca_exp.__set_permutation_dicts__('task', 'treatment')
-stat, pval = rebecca_exp.comparative_statistics('fc-ChR2', 'fc-eYFP', 'peak_heights')
+rebecca_test = fiberPhotometryCurve('/home/ryansenne/Data/Rebecca/Test_Pho_FP_engram_day2_recall_mouse1.csv', None, **{'treatment': 'eYFP', 'task': 'fc'})
+
+# rebecca_exp = fiberPhotometryExperiment(rebecca, rebecca1, rebecca2, rebecca3, rebecca4, rebecca6, rebecca7)
+# stat, pval = rebecca_exp.comparative_statistics('fc-ChR2', 'fc-eYFP', 'peak_heights')
