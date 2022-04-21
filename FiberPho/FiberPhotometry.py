@@ -16,7 +16,11 @@ from scipy.sparse.linalg import spsolve
 
 class fiberPhotometryCurve:
     def __init__(self, npm_file, behavioral_data=None, **kwargs):
-
+        """
+        :param npm_file:
+        :param behavioral_data:
+        :param kwargs:
+        """
         # these should always be present
         self.npm_file = npm_file
         self.behavioral_data = behavioral_data
@@ -127,6 +131,7 @@ class fiberPhotometryCurve:
 
         self.DF_F_Signals = self.process_data()
         self.peak_properties = self.find_signal()
+        self.neg_peak_properties = self.find_signal(neg=True)
         self.condensed_stats = self.calc_avg_peak_props()
 
     def __iter__(self):
@@ -134,7 +139,7 @@ class fiberPhotometryCurve:
 
     def __eq__(self, other):
         if not isinstance(other, fiberPhotometryCurve):
-            raise TypeError("You can only compare the identity of a fiber photometry curve to another fiber "
+            raise TypeError("You can only compare the identity of a fiber photometry curve to another fiber"
                             "photometry curve!!")
         val1 = self.DF_F_Signals.values()
         val2 = other
@@ -213,14 +218,22 @@ class fiberPhotometryCurve:
                             zip(df_f_signals, self.Timestamps.values())]
         return {identity: signal for identity, signal in zip(self.Signal.keys(), smoothed_signals)}
 
-    def find_signal(self):
+    def find_signal(self, neg=False):
         peak_properties = {}
-        for GECI, sig in self.DF_F_Signals.items():
-            peaks, properties = find_peaks(sig, height=1.0, distance=75, width=25, rel_height=0.95)
-            properties['peaks'] = peaks
-            properties['areas_under_curve'] = self.calc_area(properties['left_bases'], properties['right_bases'],
+        if not neg:
+            for GECI, sig in self.DF_F_Signals.items():
+                peaks, properties = find_peaks(sig, height=1.0, distance=75, width=25, rel_height=0.95)
+                properties['peaks'] = peaks
+                properties['areas_under_curve'] = self.calc_area(properties['left_bases'], properties['right_bases'],
                                                              self.DF_F_Signals[GECI])
-            peak_properties[GECI] = properties
+                peak_properties[GECI] = properties
+        else:
+            for GECI, sig in self.DF_F_Signals.items():
+                peaks, properties = find_peaks(-sig, height=1.0, distance=75, width=25, rel_height=0.95)
+                properties['peaks'] = peaks
+                properties['areas_under_curve'] = self.calc_area(properties['left_bases'], properties['right_bases'],
+                                                             self.DF_F_Signals[GECI])
+                peak_properties[GECI] = properties
         return peak_properties
 
     def visual_check_peaks(self, signal):
@@ -328,6 +341,9 @@ class fiberPhotometryExperiment:
         stat, pval = test(sample1, sample2)
         return stat, pval
 
+    def raster(self, group, a, b):
+        return
+
     def event_triggered_average(self, signal_array):
         pass
 
@@ -367,6 +383,11 @@ def make_3d_timeseries(timeseries, timestamps, x_axis, y_axis, z_axis, **kwargs)
 
 
 def find_critical_width(pos_wid, neg_wid):
+    """
+    :param pos_wid:
+    :param neg_wid:
+    :return:
+    """
     wid_list = list(set(pos_wid + neg_wid))
     wid_list.sort()
     if len(pos_wid) > 0 and len(neg_wid) == 0:
@@ -387,9 +408,9 @@ def find_critical_width(pos_wid, neg_wid):
     return critical_width
 
 
-
-# rebecca1 = fiberPhotometryCurve('/Users/ryansenne/Desktop/Rebecca_Data/Test_Pho_engram_ChR2_m1_Recall.csv', None,
-# **{'treatment': 'ChR2', 'task': 'recall'}) rebecca1 = fiberPhotometryCurve(
+if __name__ == '__main__':
+    rebecca1 = fiberPhotometryCurve('/Users/ryansenne/Desktop/Rebecca_Data/Test_Pho_engram_ChR2_m1_Recall.csv', None,
+    **{'treatment': 'ChR2', 'task': 'recall'})
 # '/Users/ryansenne/Desktop/Rebecca_Data/Test_Pho_FP_engram_day2_recall_mouse2.csv', None, **{'treatment': 'eYFP',
 # 'task': 'recall'})
 
