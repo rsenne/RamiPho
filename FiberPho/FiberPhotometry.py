@@ -1,5 +1,6 @@
 import pickle as pkl
 import warnings as warn
+
 import matplotlib.pyplot as plt
 import numba as nb
 import numpy as np
@@ -313,7 +314,8 @@ class fiberPhotometryExperiment:
                     print('No task supplied, assuming all animals are in the same group.')
 
         self.__set_permutation_dicts__('task', 'treatment')
-        self.__set_crit_width__()
+        for GECI in self.curves[1].DF_F_Signals.keys():
+            self.__set_crit_width__(curve_type=GECI)
 
     def __add_to_attribute_dict__(self, attr, value, attr_val):
         if hasattr(self, attr):
@@ -383,9 +385,9 @@ class fiberPhotometryExperiment:
     def __set_crit_width__(self, curve_type='GCaMP'):
         pos_list, neg_list = self.__get_curve_peak_attrs__(curve_type)
         crit_wid = self.find_critical_width(pos_list, neg_list)
-        setattr(self, "crit_width", crit_wid)
+        setattr(self, "crit_width" + "_" + curve_type, crit_wid)
         for curve in self.curves:
-            curve.reset_peak_params(self.crit_width)
+            curve.reset_peak_params(getattr(self, "crit_width" + "_" + curve_type))
             curve.calc_avg_peak_props()
         return
 
@@ -439,35 +441,27 @@ def make_3d_timeseries(timeseries, timestamps, x_axis, y_axis, z_axis, **kwargs)
 
 
 if __name__ == '__main__':
-    # rebecca1 = fiberPhotometryCurve('/Users/ryansenne/Desktop/Rebecca_Data/Test_Pho_engram_ChR2_m1_Recall.csv', None,
-    # **{'treatment': 'ChR2', 'task': 'recall'})
-    # '/Users/ryansenne/Desktop/Rebecca_Data/Test_Pho_FP_engram_day2_recall_mouse2.csv', None, **{'treatment': 'eYFP',
-    # 'task': 'recall'})
+    """
+    for when i do stuff on my mac. note this  is not real analysis and only for testing purposes
+    """
+    engram_recall_1 = fiberPhotometryCurve(
+        '/Users/ryansenne/Desktop/Rebecca_Data/Test_Pho_FP_engram_day2_recall_mouse1.csv',
+        None, **{'treatment': 'ChR2', 'task': 'Recall'})
 
-    # rebecca2 = fiberPhotometryCurve('/Users/ryansenne/Desktop/Rebecca_Data/Test_Pho_FP_engram_day2_recall_mouse1.csv',
-    # None, **{'treatment': 'ChR2', 'task': 'recall'}) rebecca2 = fiberPhotometryCurve(
-    # '/Users/ryansenne/Desktop/Rebecca_Data/Test_Pho_engram_eYFP_m1_Recall.csv', None, **{'treatment': 'eYFP',
-    # 'task': 'recall'})
+    engram_recall_2 = fiberPhotometryCurve(
+        '/Users/ryansenne/Desktop/Rebecca_Data/Test_Pho_FP_engram_day2_recall_mouse3.csv',
+        None, **{'treatment': 'ChR2', 'task': 'Recall'})
 
-    rebecca = fiberPhotometryCurve('/home/ryansenne/Data/Rebecca/Test_Pho_engram_ChR2_m1_FC.csv', None,
-                                   **{'treatment': 'ChR2', 'task': 'fc'})
-    rebecca1 = fiberPhotometryCurve('/home/ryansenne/Data/Rebecca/Test_Pho_engram_ChR2_m2_FC.csv', None,
-                                    **{'treatment': 'ChR2', 'task': 'fc'})
-    rebecca2 = fiberPhotometryCurve('/home/ryansenne/Data/Rebecca/Test_Pho_engram_ChR2_m3_FC.csv', None,
-                                    **{'treatment': 'ChR2', 'task': 'fc'})
-    rebecca3 = fiberPhotometryCurve('/home/ryansenne/Data/Rebecca/Test_Pho_engram_ChR2_m4_FC.csv', None,
-                                    **{'treatment': 'ChR2', 'task': 'fc'})
-    rebecca4 = fiberPhotometryCurve('/home/ryansenne/Data/Rebecca/Test_Pho_engram_eYFP_m1_FC.csv', None,
-                                    **{'treatment': 'eYFP', 'task': 'fc'})
-    rebecca5 = fiberPhotometryCurve('/home/ryansenne/Data/Rebecca/Test_Pho_engram_eYFP_m2_FC.csv', None,
-                                    **{'treatment': 'eYFP', 'task': 'fc'})
-    rebecca6 = fiberPhotometryCurve('/home/ryansenne/Data/Rebecca/Test_Pho_engram_eYFP_m3_FC.csv', None,
-                                    **{'treatment': 'eYFP', 'task': 'fc'})
-    rebecca7 = fiberPhotometryCurve('/home/ryansenne/Data/Rebecca/Test_Pho_engram_eYFP_m4_FC.csv', None,
-                                    **{'treatment': 'eYFP', 'task': 'fc'})
+    sham_recall_1 = fiberPhotometryCurve(
+        '/Users/ryansenne/Desktop/Rebecca_Data/Test_Pho_FP_engram_day2_recall_mouse3.csv',
+        None, **{'treatment': 'eYFP', 'task': 'Recall'})
 
-    # rebecca_test = fiberPhotometryCurve('/home/ryansenne/Data/Rebecca/Test_Pho_FP_engram_day2_recall_mouse1.csv', None, **{'treatment': 'eYFP', 'task': 'fc'})
+    sham_recall_2 = fiberPhotometryCurve(
+        '/Users/ryansenne/Desktop/Rebecca_Data/Test_Pho_FP_engram_day2_recall_mouse4.csv',
+        None, **{'treatment': 'eYFP', 'task': 'Recall'})
 
-    rebecca_exp = fiberPhotometryExperiment(rebecca, rebecca1, rebecca2, rebecca3, rebecca4, rebecca6, rebecca7)
-    # rebecca_exp.__set_crit_width__()
-# stat, pval = rebecca_exp.comparative_statistics('fc-ChR2', 'fc-eYFP', 'peak_heights')
+    engram_exp = fiberPhotometryExperiment(engram_recall_1, engram_recall_2)
+
+    """
+    for when i do stuff on linux
+    """
