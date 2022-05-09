@@ -1,6 +1,5 @@
 import pickle as pkl
 import warnings as warn
-
 import matplotlib.pyplot as plt
 import numba as nb
 import numpy as np
@@ -68,7 +67,7 @@ class fiberPhotometryCurve:
         if self.__DUAL_COLOR:
             gcamp = self.fp_df[self.fp_df['LedState'] == 2]
             rcamp = self.fp_df[self.fp_df['LedState'] == 4]
-            isobestic = self.fp_df[self.fp_df['LedState'] == 2]
+            isobestic = self.fp_df[self.fp_df['LedState'] == 1]
             if self.__CONF1:
                 isobestic_gcamp = isobestic.Region0G
                 isobestic_rcamp = isobestic.Region1R
@@ -113,7 +112,7 @@ class fiberPhotometryCurve:
                                    "Isobestic_GCaMP": np.array(isobestic["Region1G"])}
 
             except KeyError:
-                rcamp = self.fp_df[self.fp_df['LedState'] == 3]
+                rcamp = self.fp_df[self.fp_df['LedState'] == 1]
                 self.Timestamps = {signal: time.values.tolist() - self.fp_df['Timestamp'][1] for
                                    signal, time in zip(['RCaMP_Isobestic', 'RCaMP'], [isobestic, rcamp])}
                 self.timestamps = [x.iloc[:, 1].reset_index(drop=True).tolist() - self.fp_df['Timestamp'][1] for x in
@@ -223,14 +222,14 @@ class fiberPhotometryCurve:
         peak_properties = {}
         if not neg:
             for GECI, sig in self.DF_F_Signals.items():
-                peaks, properties = find_peaks(sig, height=1.0, distance=75, width=25, rel_height=0.95)
+                peaks, properties = find_peaks(sig, height=1.0, distance=131, width=25, rel_height=0.95)
                 properties['peaks'] = peaks
                 properties['areas_under_curve'] = self.calc_area(properties['left_bases'], properties['right_bases'],
                                                                  self.DF_F_Signals[GECI])
                 peak_properties[GECI] = properties
         else:
             for GECI, sig in self.DF_F_Signals.items():
-                peaks, properties = find_peaks(-sig, height=1.0, distance=75, width=25, rel_height=0.95)
+                peaks, properties = find_peaks(-sig, height=1.0, distance=131, width=25, rel_height=0.95)
                 properties['peaks'] = peaks
                 properties['areas_under_curve'] = self.calc_area(properties['left_bases'], properties['right_bases'],
                                                                  self.DF_F_Signals[GECI])
@@ -238,7 +237,7 @@ class fiberPhotometryCurve:
         return peak_properties
 
     def visual_check_peaks(self, signal):
-        if hasattr(fiberPhotometryCurve, "peak_properties"):
+        if hasattr(self, "peak_properties"):
             plt.figure()
             plt.plot(self.DF_F_Signals[signal])
             plt.plot(self.peak_properties[signal]['peaks'],
@@ -249,6 +248,7 @@ class fiberPhotometryCurve:
                        ymax=self.DF_F_Signals[signal][self.peak_properties[signal]['peaks']], color="C1")
             plt.hlines(y=self.peak_properties[signal]["width_heights"], xmin=self.peak_properties[signal]["left_ips"],
                        xmax=self.peak_properties[signal]["right_ips"], color="C1")
+            plt.show()
         else:
             raise KeyError(f'{signal} is not in {self}')
         return
@@ -356,8 +356,8 @@ class fiberPhotometryExperiment:
         neg_list = [x.neg_peak_properties[curve_type]['widths'].tolist() for x in self.curves]
         return self.__combine_all_lists__(*pos_list), self.__combine_all_lists__(*neg_list)
 
-    @staticmethod
-    def find_critical_width(pos_wid, neg_wid):
+
+    def find_critical_width(self, pos_wid, neg_wid):
         """
         :param pos_wid:
         :param neg_wid:
@@ -372,14 +372,19 @@ class fiberPhotometryExperiment:
         else:
             i = 0
             try:
-                while len(pos_wid) / (len(pos_wid) + len(neg_wid)) < 0.99:
-                    pos_wid = [pos for pos in pos_wid if pos > wid_list[i]]
-                    neg_wid = [neg for neg in neg_wid if neg > wid_list[i]]
+                pos = pos_wid
+                neg = neg_wid
+                while len(pos) / (len(pos) + len(neg)) < 0.99:
+                    pos = [pos_i for pos_i in pos if pos_i > wid_list[i]]
+                    neg = [neg_i for neg_i in neg if neg_i > wid_list[i]]
                     i += 1
                 else:
                     critical_width = wid_list[i]
             except ZeroDivisionError:
                 critical_width = wid_list[i]
+            except IndexError:
+                neg_wid = neg_wid[:-1].sort()
+                return self.find_critical_width(pos_wid, neg_wid)
         return critical_width
 
     def __set_crit_width__(self, curve_type='GCaMP'):
@@ -460,7 +465,7 @@ if __name__ == '__main__':
         '/Users/ryansenne/Desktop/Rebecca_Data/Test_Pho_FP_engram_day2_recall_mouse4.csv',
         None, **{'treatment': 'eYFP', 'task': 'Recall'})
 
-    engram_exp = fiberPhotometryExperiment(engram_recall_1, engram_recall_2)
+    engram_exp = fiberPhotometryExperiment(engram_recall_1, engram_recall_2, sham_recall_1, sham_recall_2)
 
     """
     for when i do stuff on linux
