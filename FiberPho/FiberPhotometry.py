@@ -76,7 +76,7 @@ class fiberPhotometryCurve:
                                "Isobestic_GCaMP": np.array(isobestic_gcamp),
                                "Isobestic_RCaMP": np.array(isobestic_rcamp)}
                 self.isobestic = [isobestic_gcamp, isobestic_rcamp]
-                self.Timestamps = {signal: time.iloc[:, 1].reset_index(drop=True).tolist() - self.fp_df['Timestamp'][1]
+                self.Timestamps = {signal: time.reset_index(drop=True).tolist() - self.fp_df['Timestamp'][1]
                                    for
                                    signal, time in zip(['Isobestic_GCaMP', 'Isobestic_RCaMP', 'GCaMP', 'RCaMP'],
                                                        [isobestic.Timestamp, isobestic.Timestamp, gcamp.Timestamp,
