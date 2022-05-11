@@ -382,10 +382,11 @@ class fiberPhotometryExperiment:
                 else:
                     critical_width = wid_list[i]
             except ZeroDivisionError:
-                critical_width = wid_list[i]
-            except IndexError:
-                neg_wid = neg_wid[:-1].sort()
+                neg_wid.sort()
+                neg_wid = neg_wid[:-1]
                 return self.find_critical_width(pos_wid, neg_wid)
+            # except IndexError:
+
         return critical_width
 
     def __set_crit_width__(self, curve_type='GCaMP'):
@@ -451,7 +452,7 @@ if __name__ == '__main__':
     for when i do stuff on my mac. note this  is not real analysis and only for testing purposes
     """
     engram_recall_1 = fiberPhotometryCurve(
-        '/Users/ryansenne/Desktop/Rebecca_Data/Test_Pho_FP_engram_day2_recall_mouse1.csv',
+        '/Users/ryansenne/Desktop/Rebecca_Data/Test_Pho_FP_engram_day1_FC_mouse2.csv',
         None, **{'treatment': 'ChR2', 'task': 'Recall'})
 
     engram_recall_2 = fiberPhotometryCurve(
