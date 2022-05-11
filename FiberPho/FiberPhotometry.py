@@ -112,11 +112,9 @@ class fiberPhotometryCurve:
                                    "Isobestic_GCaMP": np.array(isobestic["Region1G"])}
 
             except KeyError:
-                rcamp = self.fp_df[self.fp_df['LedState'] == 1]
+                rcamp = self.fp_df[self.fp_df['LedState'] == 4]
                 self.Timestamps = {signal: time.values.tolist() - self.fp_df['Timestamp'][1] for
                                    signal, time in zip(['RCaMP_Isobestic', 'RCaMP'], [isobestic, rcamp])}
-                self.timestamps = [x.iloc[:, 1].reset_index(drop=True).tolist() - self.fp_df['Timestamp'][1] for x in
-                                   [isobestic.Timestamp, rcamp.Timestamp]]
 
                 if self.__CONF1:
                     self.Signal = {"RCaMP": np.array(rcamp['Region1R']),
