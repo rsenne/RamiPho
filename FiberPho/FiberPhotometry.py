@@ -132,7 +132,7 @@ class fiberPhotometryCurve:
         self.DF_F_Signals = self.process_data()
         self.peak_properties = self.find_signal()
         self.neg_peak_properties = self.find_signal(neg=True)
-        # self.condensed_stats = self.calc_avg_peak_props()
+
 
     def __iter__(self):
         return iter(list(self.DF_F_Signals.values()))
@@ -279,7 +279,7 @@ class fiberPhotometryCurve:
         setattr(self, "condensed_stats", condensed_props)
         return condensed_props
 
-    def reset_peak_params(self, crit_width, curve_type='GCaMP'):
+    def reset_peak_params(self, crit_width, curve_type):
         deletion_list = [i for i, j in enumerate(self.peak_properties[curve_type]['widths']) if j < crit_width]
         for prop in self.peak_properties[curve_type]:
             self.peak_properties[curve_type][prop] = np.delete(self.peak_properties[curve_type][prop], deletion_list)
@@ -337,8 +337,11 @@ class fiberPhotometryExperiment:
                     group_list1.append(value)
                 else:
                     group_list2.append(value)
-            list_of_dicts.append({x + "-" + list(getattr(self, attr2).keys())[0]: group_list1})
-            list_of_dicts.append({x + "-" + list(getattr(self, attr2).keys())[1]: group_list2})
+            try:
+                list_of_dicts.append({x + "-" + list(getattr(self, attr2).keys())[0]: group_list1})
+                list_of_dicts.append({x + "-" + list(getattr(self, attr2).keys())[1]: group_list2})
+            except IndexError:
+                list_of_dicts.append({x + "-" + list(getattr(self, attr2).keys())[0]: group_list1})
             for d in list_of_dicts:
                 key = next(iter(d.keys()))
                 setattr(fiberPhotometryExperiment, key, d)
@@ -392,7 +395,7 @@ class fiberPhotometryExperiment:
         crit_wid = self.find_critical_width(pos_list, neg_list)
         setattr(self, "crit_width" + "_" + curve_type, crit_wid)
         for curve in self.curves:
-            curve.reset_peak_params(getattr(self, "crit_width" + "_" + curve_type))
+            curve.reset_peak_params(getattr(self, "crit_width" + "_" + curve_type), curve_type)
             curve.calc_avg_peak_props()
         return
 
@@ -459,11 +462,11 @@ if __name__ == '__main__':
 
     sham_recall_1 = fiberPhotometryCurve(
         '/Users/ryansenne/Desktop/Rebecca_Data/Test_Pho_FP_engram_day2_recall_mouse3.csv',
-        None, **{'treatment': 'eYFP', 'task': 'Recall'})
+        None, **{'treatment': 'ChR2', 'task': 'Recall'})
 
     sham_recall_2 = fiberPhotometryCurve(
         '/Users/ryansenne/Desktop/Rebecca_Data/Test_Pho_FP_engram_day2_recall_mouse4.csv',
-        None, **{'treatment': 'eYFP', 'task': 'Recall'})
+        None, **{'treatment': 'ChR2', 'task': 'Recall'})
 
     engram_exp = fiberPhotometryExperiment(engram_recall_1, engram_recall_2, sham_recall_1, sham_recall_2)
 
