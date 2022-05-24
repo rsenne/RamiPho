@@ -75,7 +75,6 @@ class fiberPhotometryCurve:
                                "RCaMP": np.array(gcamp['Region1R']),
                                "Isobestic_GCaMP": np.array(isobestic_gcamp),
                                "Isobestic_RCaMP": np.array(isobestic_rcamp)}
-                self.isobestic = [isobestic_gcamp, isobestic_rcamp]
                 self.Timestamps = {signal: time.reset_index(drop=True).tolist() - self.fp_df['Timestamp'][1]
                                    for
                                    signal, time in zip(['Isobestic_GCaMP', 'Isobestic_RCaMP', 'GCaMP', 'RCaMP'],
@@ -173,7 +172,6 @@ class fiberPhotometryCurve:
             Z = W + D
             z = spsolve(Z, w * y)
             w = p * (y > z) + (1 - p) * (y < z)
-
         return y - z
 
     @staticmethod
@@ -212,6 +210,7 @@ class fiberPhotometryCurve:
         for i in range(len(df_f_signals)):
             if abs(np.median(df_f_signals[i])) < 0.05:
                 df_f_signals[i] = self._als_detrend(df_f_signals[i])
+        # smoothed like a baby's bottom
         smoothed_signals = [self.b_smooth(timeseries, self.smooth(sigs, 10)) for timeseries, sigs in
                             zip(df_f_signals, self.Timestamps.values())]
         return {identity: signal for identity, signal in zip(self.Signal.keys(), smoothed_signals)}
@@ -220,7 +219,7 @@ class fiberPhotometryCurve:
         peak_properties = {}
         if not neg:
             for GECI, sig in self.DF_F_Signals.items():
-                peaks, properties = find_peaks(sig, height=1.0, distance=131, width=25, rel_height=0.95)
+                peaks, properties = find_peaks(sig, height=1.0, distance=131, width=25, rel_height=0.95) #height=1.0, distance=130, prominence=0.5, width=25, rel_height=0.90)
                 properties['peaks'] = peaks
                 properties['areas_under_curve'] = self.calc_area(properties['left_bases'], properties['right_bases'],
                                                                  self.DF_F_Signals[GECI])
@@ -281,6 +280,9 @@ class fiberPhotometryCurve:
         deletion_list = [i for i, j in enumerate(self.peak_properties[curve_type]['widths']) if j < crit_width]
         for prop in self.peak_properties[curve_type]:
             self.peak_properties[curve_type][prop] = np.delete(self.peak_properties[curve_type][prop], deletion_list)
+        return
+
+    def eliminate_extreme_values(self):
         return
 
 
@@ -406,11 +408,16 @@ class fiberPhotometryExperiment:
         stat, pval = test(sample1, sample2)
         return stat, pval
 
-    def raster(self, group, a, b):
+    def raster(self, group, curve, a, b, colormap):
+        sb.set()
+        vector_array = np.array([vec.DF_F_Signals[curve][a:b].tolist() for vec in next(iter(getattr(self, group).values()))])
+        sb.heatmap(vector_array)
+        plt.show()
         return
 
-    def event_triggered_average(self, signal_array):
-        pass
+    def event_triggered_average(self, group, curve, event_time, window):
+        vector_array = np.array([vec.DF_F_Signals[curve][event_time-window/2:event_time+window].tolist() for vec in next(iter(getattr(self, group).values()))])
+        return vector_array
 
 
 def raster(raster_array, cmap="coolwarm", event_or_heat='event'):
@@ -468,6 +475,7 @@ if __name__ == '__main__':
         None, **{'treatment': 'ChR2', 'task': 'Recall'})
 
     engram_exp = fiberPhotometryExperiment(engram_recall_1, engram_recall_2, sham_recall_1, sham_recall_2)
+    z = engram_exp.event_triggered_average('Recall-ChR2', 'GCaMP', 1, 40)
 
     """
     for when i do stuff on linux
