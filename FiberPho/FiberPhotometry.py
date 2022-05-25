@@ -411,13 +411,37 @@ class fiberPhotometryExperiment:
     def raster(self, group, curve, a, b, colormap):
         sb.set()
         vector_array = np.array([vec.DF_F_Signals[curve][a:b].tolist() for vec in next(iter(getattr(self, group).values()))])
-        sb.heatmap(vector_array)
+        sb.heatmap(vector_array, cmap=colormap)
         plt.show()
         return
 
     def event_triggered_average(self, group, curve, event_time, window):
-        vector_array = np.array([vec.DF_F_Signals[curve][event_time-window/2:event_time+window].tolist() for vec in next(iter(getattr(self, group).values()))])
-        return vector_array
+        time = [time.Timestamps[curve].tolist() for time in next(iter(getattr(self, group).values()))]
+        max_ind = np.min([len(x) for x in time])
+        time_array = np.array([time.Timestamps[curve][0:max_ind].tolist() for time in next(iter(getattr(self, group).values()))])
+        try:
+            average_time = np.average(time_array, axis=0)
+        except ZeroDivisionError:
+            average_time = np.zeros(shape=(1, len(time_array)))
+            average_time[0] = 0
+            average_time[1:] = np.average(time_array[1:], axis=0)
+        index = np.argmin(np.abs(average_time - event_time))
+        index_right_bound = np.argmin(np.abs(average_time - event_time-window))
+        index_left_bound = np.argmin(np.abs(average_time - event_time+(window/2)))
+        vector_array = np.array([vec.DF_F_Signals[curve][index_left_bound:index_right_bound].tolist() for vec in next(iter(getattr(self, group).values()))])
+        try:
+            averaged_trace = np.average(vector_array, axis=0)
+        except ZeroDivisionError:
+            averaged_trace = np.zeros(shape=(1, len(vector_array)))
+            averaged_trace[0] = 0
+            averaged_trace[1:] = np.average(vector_array[1:], axis=0)
+        ci = 1.95 * np.std(averaged_trace, axis=0)/np.sqrt(average_time[index_right_bound]-np.sqrt(average_time[index_right_bound]))
+        fig, ax = plt.subplots()
+        ax.plot(average_time[index_left_bound:index_right_bound], averaged_trace)
+        ax.fill_between(average_time[index_left_bound: index_right_bound], (averaged_trace-ci), averaged_trace+ci, color='b', alpha=0.1)
+        plt.axvline(average_time[index], linestyle='--')
+        plt.show()
+        return vector_array, averaged_trace
 
 
 def raster(raster_array, cmap="coolwarm", event_or_heat='event'):
@@ -458,25 +482,35 @@ if __name__ == '__main__':
     """
     for when i do stuff on my mac. note this  is not real analysis and only for testing purposes
     """
-    engram_recall_1 = fiberPhotometryCurve(
-        '/Users/ryansenne/Desktop/Rebecca_Data/Test_Pho_FP_engram_day1_FC_mouse2.csv',
-        None, **{'treatment': 'ChR2', 'task': 'Recall'})
-
-    engram_recall_2 = fiberPhotometryCurve(
-        '/Users/ryansenne/Desktop/Rebecca_Data/Test_Pho_FP_engram_day2_recall_mouse3.csv',
-        None, **{'treatment': 'ChR2', 'task': 'Recall'})
-
-    sham_recall_1 = fiberPhotometryCurve(
-        '/Users/ryansenne/Desktop/Rebecca_Data/Test_Pho_FP_engram_day2_recall_mouse3.csv',
-        None, **{'treatment': 'ChR2', 'task': 'Recall'})
-
-    sham_recall_2 = fiberPhotometryCurve(
-        '/Users/ryansenne/Desktop/Rebecca_Data/Test_Pho_FP_engram_day2_recall_mouse4.csv',
-        None, **{'treatment': 'ChR2', 'task': 'Recall'})
-
-    engram_exp = fiberPhotometryExperiment(engram_recall_1, engram_recall_2, sham_recall_1, sham_recall_2)
-    z = engram_exp.event_triggered_average('Recall-ChR2', 'GCaMP', 1, 40)
+    # engram_recall_1 = fiberPhotometryCurve(
+    #     '/Users/ryansenne/Desktop/Rebecca_Data/Test_Pho_FP_engram_day1_FC_mouse2.csv',
+    #     None, **{'treatment': 'ChR2', 'task': 'Recall'})
+    #
+    # engram_recall_2 = fiberPhotometryCurve(
+    #     '/Users/ryansenne/Desktop/Rebecca_Data/Test_Pho_FP_engram_day2_recall_mouse3.csv',
+    #     None, **{'treatment': 'ChR2', 'task': 'Recall'})
+    #
+    # sham_recall_1 = fiberPhotometryCurve(
+    #     '/Users/ryansenne/Desktop/Rebecca_Data/Test_Pho_FP_engram_day2_recall_mouse3.csv',
+    #     None, **{'treatment': 'ChR2', 'task': 'Recall'})
+    #
+    # sham_recall_2 = fiberPhotometryCurve(
+    #     '/Users/ryansenne/Desktop/Rebecca_Data/Test_Pho_FP_engram_day2_recall_mouse4.csv',
+    #     None, **{'treatment': 'ChR2', 'task': 'Recall'})
+    #
+    # engram_exp = fiberPhotometryExperiment(engram_recall_1, engram_recall_2, sham_recall_1, sham_recall_2)
+    # z = engram_exp.event_triggered_average('Recall-ChR2', 'GCaMP', 1, 40)
 
     """
     for when i do stuff on linux
     """
+    fc_1 = fiberPhotometryCurve('/home/ryansenne/Data/Rebecca/Test_Pho_engram_ChR2_m1_FC.csv', None,
+                                     **{'treatment': 'ChR2', 'task': 'FC'})
+    fc_2 = fiberPhotometryCurve('/home/ryansenne/Data/Rebecca/Test_Pho_engram_ChR2_m2_FC.csv', None,
+                                     **{'treatment': 'ChR2', 'task': 'FC'})
+    fc_3 = fiberPhotometryCurve('/home/ryansenne/Data/Rebecca/Test_Pho_engram_ChR2_m2_FC.csv', None,
+                                     **{'treatment': 'ChR2', 'task': 'FC'})
+
+    fc_experiment = fiberPhotometryExperiment(fc_1, fc_2, fc_3)
+
+    z = fc_experiment.event_triggered_average('FC-ChR2', 'GCaMP', 124, 10)
