@@ -415,7 +415,7 @@ class fiberPhotometryExperiment:
         plt.show()
         return
 
-    def event_triggered_average(self, group, curve, event_time, window):
+    def event_triggered_average(self, curve, event_time, window, group):
         time = [time.Timestamps[curve].tolist() for time in next(iter(getattr(self, group).values()))]
         max_ind = np.min([len(x) for x in time])
         time_array = np.array([time.Timestamps[curve][0:max_ind].tolist() for time in next(iter(getattr(self, group).values()))])
@@ -435,14 +435,17 @@ class fiberPhotometryExperiment:
             averaged_trace = np.zeros(shape=(1, len(vector_array)))
             averaged_trace[0] = 0
             averaged_trace[1:] = np.average(vector_array[1:], axis=0)
-        ci = 1.95 * np.std(averaged_trace, axis=0)/np.sqrt(average_time[index_right_bound]-np.sqrt(average_time[index_right_bound]))
+        ci = 1.96 * np.std(vector_array, axis=0)/np.sqrt(np.shape(vector_array)[0])
         fig, ax = plt.subplots()
+        plt.axvline(average_time[index], linestyle='--', color='black')
         ax.plot(average_time[index_left_bound:index_right_bound], averaged_trace)
-        ax.fill_between(average_time[index_left_bound: index_right_bound], (averaged_trace-ci), averaged_trace+ci, color='b', alpha=0.1)
-        plt.axvline(average_time[index], linestyle='--')
+        ax.fill_between(average_time[index_left_bound: index_right_bound], (averaged_trace - ci),
+                        (averaged_trace + ci), color='b', alpha=0.1)
         plt.show()
-        return vector_array, averaged_trace
+        return averaged_trace, average_time[index_left_bound:index_right_bound], ci
 
+    def plot_eta(self, av_tr1, av_tr2, av_tim1, av_tim2, ci_1, ci_2):
+        return
 
 def raster(raster_array, cmap="coolwarm", event_or_heat='event'):
     sb.set()
@@ -504,13 +507,13 @@ if __name__ == '__main__':
     """
     for when i do stuff on linux
     """
-    fc_1 = fiberPhotometryCurve('/home/ryansenne/Data/Rebecca/Test_Pho_engram_ChR2_m1_FC.csv', None,
+    fc_1 = fiberPhotometryCurve('/Users/ryansenne/Desktop/Rebecca_Data/Test_Pho_engram_ChR2_m1_FC.csv', None,
                                      **{'treatment': 'ChR2', 'task': 'FC'})
-    fc_2 = fiberPhotometryCurve('/home/ryansenne/Data/Rebecca/Test_Pho_engram_ChR2_m2_FC.csv', None,
+    fc_2 = fiberPhotometryCurve('/Users/ryansenne/Desktop/Rebecca_Data/Test_Pho_engram_ChR2_m2_FC.csv', None,
                                      **{'treatment': 'ChR2', 'task': 'FC'})
-    fc_3 = fiberPhotometryCurve('/home/ryansenne/Data/Rebecca/Test_Pho_engram_ChR2_m2_FC.csv', None,
-                                     **{'treatment': 'ChR2', 'task': 'FC'})
+    fc_3 = fiberPhotometryCurve('/Users/ryansenne/Desktop/Rebecca_Data/Test_Pho_engram_ChR2_m2_FC.csv', None,
+                                     **{'treatment': 'eYFP', 'task': 'FC'})
 
     fc_experiment = fiberPhotometryExperiment(fc_1, fc_2, fc_3)
 
-    z = fc_experiment.event_triggered_average('FC-ChR2', 'GCaMP', 124, 10)
+    z,z1,z2 = fc_experiment.event_triggered_average('GCaMP', 124, 10, 'FC-ChR2')
