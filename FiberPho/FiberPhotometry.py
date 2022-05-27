@@ -15,6 +15,7 @@ from scipy.sparse.linalg import spsolve
 
 __all__ = ["fiberPhotometryCurve", "fiberPhotometryExperiment"]
 
+
 class fiberPhotometryCurve:
     def __init__(self, npm_file, behavioral_data=None, off_set=None, **kwargs):
 
@@ -127,7 +128,6 @@ class fiberPhotometryCurve:
         self.peak_properties = self.find_signal()
         self.neg_peak_properties = self.find_signal(neg=True)
 
-
     def __iter__(self):
         return iter(list(self.DF_F_Signals.values()))
 
@@ -219,7 +219,8 @@ class fiberPhotometryCurve:
         peak_properties = {}
         if not neg:
             for GECI, sig in self.DF_F_Signals.items():
-                peaks, properties = find_peaks(sig, height=1.0, distance=131, width=25, rel_height=0.95) #height=1.0, distance=130, prominence=0.5, width=25, rel_height=0.90)
+                peaks, properties = find_peaks(sig, height=1.0, distance=131, width=25,
+                                               rel_height=0.95)  # height=1.0, distance=130, prominence=0.5, width=25, rel_height=0.90)
                 properties['peaks'] = peaks
                 properties['areas_under_curve'] = self.calc_area(properties['left_bases'], properties['right_bases'],
                                                                  self.DF_F_Signals[GECI])
@@ -359,7 +360,6 @@ class fiberPhotometryExperiment:
         neg_list = [x.neg_peak_properties[curve_type]['widths'].tolist() for x in self.curves]
         return self.__combine_all_lists__(*pos_list), self.__combine_all_lists__(*neg_list)
 
-
     def find_critical_width(self, pos_wid, neg_wid):
         """
         :param pos_wid:
@@ -410,7 +410,8 @@ class fiberPhotometryExperiment:
 
     def raster(self, group, curve, a, b, colormap):
         sb.set()
-        vector_array = np.array([vec.DF_F_Signals[curve][a:b].tolist() for vec in next(iter(getattr(self, group).values()))])
+        vector_array = np.array(
+            [vec.DF_F_Signals[curve][a:b].tolist() for vec in next(iter(getattr(self, group).values()))])
         sb.heatmap(vector_array, cmap=colormap)
         plt.show()
         return
@@ -418,7 +419,8 @@ class fiberPhotometryExperiment:
     def event_triggered_average(self, curve, event_time, window, group, plot=False):
         time = [time.Timestamps[curve].tolist() for time in next(iter(getattr(self, group).values()))]
         max_ind = np.min([len(x) for x in time])
-        time_array = np.array([time.Timestamps[curve][0:max_ind].tolist() for time in next(iter(getattr(self, group).values()))])
+        time_array = np.array(
+            [time.Timestamps[curve][0:max_ind].tolist() for time in next(iter(getattr(self, group).values()))])
         try:
             average_time = np.average(time_array, axis=0)
         except ZeroDivisionError:
@@ -426,22 +428,23 @@ class fiberPhotometryExperiment:
             average_time[0] = 0
             average_time[1:] = np.average(time_array[1:], axis=0)
         index = np.argmin(np.abs(average_time - event_time))
-        index_right_bound = np.argmin(np.abs(average_time - (event_time+window)))
-        index_left_bound = np.argmin(np.abs(average_time - (event_time-(window/2))))
-        vector_array = np.array([vec.DF_F_Signals[curve][index_left_bound:index_right_bound].tolist() for vec in next(iter(getattr(self, group).values()))])
+        index_right_bound = np.argmin(np.abs(average_time - (event_time + window)))
+        index_left_bound = np.argmin(np.abs(average_time - (event_time - (window / 2))))
+        vector_array = np.array([vec.DF_F_Signals[curve][index_left_bound:index_right_bound].tolist() for vec in
+                                 next(iter(getattr(self, group).values()))])
         try:
             averaged_trace = np.average(vector_array, axis=0)
         except ZeroDivisionError:
             averaged_trace = np.zeros(shape=(1, len(vector_array)))
             averaged_trace[0] = 0
             averaged_trace[1:] = np.average(vector_array[1:], axis=0)
-        ci = 1.96 * np.std(vector_array, axis=0)/np.sqrt(np.shape(vector_array)[0])
+        ci = 1.96 * np.std(vector_array, axis=0) / np.sqrt(np.shape(vector_array)[0])
         if plot:
             fig, ax = plt.subplots()
             plt.axvline(average_time[index], linestyle='--', color='black')
             ax.plot(average_time[index_left_bound:index_right_bound], averaged_trace)
             ax.fill_between(average_time[index_left_bound: index_right_bound], (averaged_trace - ci),
-                        (averaged_trace + ci), color='b', alpha=0.1)
+                            (averaged_trace + ci), color='b', alpha=0.1)
             plt.show()
         return averaged_trace, average_time[index_left_bound:index_right_bound], ci
 
@@ -451,9 +454,10 @@ class fiberPhotometryExperiment:
             ti_ind = np.argmin(np.abs(av_ti - event_time))
             plt.axvline(av_ti[ti_ind], linestyle='--', color='black')
             plt.plot(av_ti, av_tr)
-            plt.fill_between(av_ti, (av_tr-ci), (av_tr+ci), alpha=0.1)
+            plt.fill_between(av_ti, (av_tr - ci), (av_tr + ci), alpha=0.1)
         plt.show()
         return
+
 
 def raster(raster_array, cmap="coolwarm", event_or_heat='event'):
     sb.set()
@@ -516,11 +520,11 @@ if __name__ == '__main__':
     for when i do stuff on linux
     """
     fc_1 = fiberPhotometryCurve('/home/ryansenne/Data/Rebecca/Test_Pho_engram_ChR2_m1_FC.csv', None,
-                                     **{'treatment': 'ChR2', 'task': 'FC'})
+                                **{'treatment': 'ChR2', 'task': 'FC'})
     fc_2 = fiberPhotometryCurve('/home/ryansenne/Data/Rebecca/Test_Pho_engram_ChR2_m2_FC.csv', None,
-                                     **{'treatment': 'ChR2', 'task': 'FC'})
+                                **{'treatment': 'ChR2', 'task': 'FC'})
     fc_3 = fiberPhotometryCurve('/home/ryansenne/Data/Rebecca/Test_Pho_engram_ChR2_m3_FC.csv', None,
-                                     **{'treatment': 'ChR2', 'task': 'FC'})
+                                **{'treatment': 'ChR2', 'task': 'FC'})
     fc_4 = fiberPhotometryCurve('/home/ryansenne/Data/Rebecca/Test_Pho_engram_ChR2_m4_FC.csv', None,
                                 **{'treatment': 'ChR2', 'task': 'FC'})
     fc_5 = fiberPhotometryCurve('/home/ryansenne/Data/Rebecca/Test_Pho_engram_eYFP_m1_FC.csv', None,

@@ -1,6 +1,4 @@
 import numpy as np
-import statsmodels.api as sm
-import seaborn as sb
 import matplotlib.pyplot as plt
 
 
@@ -15,7 +13,7 @@ class bSpline:
 
         self.b = np.zeros((n, c))  # basis
         bb = np.zeros((n, c))  # basis buffer
-        left = np.clip(np.floor(u), 0, c - d - 1).astype(int)  # left  knot vector indices
+        left = np.clip(np.floor(u), 0, c - d - 1).astype(int)  # left knot vector indices
         right = left + d + 1  # right knot vector indices
 
         # Go!
