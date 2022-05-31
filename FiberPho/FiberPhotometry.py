@@ -6,6 +6,8 @@ import numpy as np
 import pandas as pd
 import scipy.stats
 import seaborn as sb
+import statsmodels.api as sm
+import b_spline
 from scipy import sparse
 from scipy.integrate import simpson
 from scipy.interpolate import splrep, splev
@@ -17,7 +19,17 @@ __all__ = ["fiberPhotometryCurve", "fiberPhotometryExperiment"]
 
 
 class fiberPhotometryCurve:
-    def __init__(self, npm_file, behavioral_data=None, off_set=None, **kwargs):
+    def __init__(self, npm_file: str, behavioral_data: str = None, keystroke_offset=None, manual_off_set=None,
+                 **kwargs):
+        """
+        :param npm_file: str Path to csv fiber photometry file gathered using a neurophotometrics fp3002 rig and bonsai software
+        :param behavioral_data: Path(s) to csv files, either deeplabcut or anymaze, for doing behavioral analysis
+        :param keystroke_offset: Value corresponding to a keystroke press in bonsai for removing irrelevant data
+        :param manual_off_set: Value obtained from calcualting offset from expected event i.e. blue light and its theoretical appearance in video
+        :param kwargs: dict containing values such as "ID", "task", and/or "treatment" note: task and ttreatment necessary for use in fiberPhotometryExperiment
+
+
+        """
 
         # these should always be present
         self.npm_file = npm_file
@@ -27,6 +39,16 @@ class fiberPhotometryCurve:
 
         # read the file
         self.fp_df = pd.read_csv(self.npm_file)
+
+        # determine sample time
+        self._sample_time_ = np.diff(self.fp_df['Timestamp'])[1]
+
+        if manual_off_set:
+            self.fp_df = self.fp_df[int(manual_off_set // self._sample_time_):].reset_index()
+
+        if keystroke_offset:
+            ind = self.fp_df[self.fp_df['Timestamp'] == keystroke_offset]
+            self.fp_df = self.fp_df[ind:].reset_index()
 
         # check to see if using old files
         if "Flags" in self.fp_df.columns:
@@ -212,8 +234,12 @@ class fiberPhotometryCurve:
                             zip(df_f_signals, self.Timestamps.values())]
         return {identity: signal for identity, signal in zip(self.Signal.keys(), smoothed_signals)}
 
-    def fit_general_linear_model(self):
-        return
+    def fit_general_linear_model(self, curve, ind_vars):
+        dep_var = np.reshape(self.DF_F_Signals[curve], (len(self.DF_F_Signals[curve]), 1))
+        ind_var = sm.add_constant(pd.DataFrame(ind_vars))
+        gaussian_model = sm.GLM(endog=dep_var, exog=ind_var, family=sm.families.Gaussian())
+        res_fit = gaussian_model.fit()
+        return res_fit
 
     def find_signal(self, neg=False):
         peak_properties = {}
@@ -459,17 +485,6 @@ class fiberPhotometryExperiment:
         return
 
 
-def raster(raster_array, cmap="coolwarm", event_or_heat='event'):
-    sb.set()
-    if event_or_heat == 'event':
-        fig, ax = plt.subplots()
-        ax.eventplot(raster_array)
-    else:
-        sb.heatmap(raster_array)
-    plt.show()
-    return
-
-
 def make_3d_timeseries(timeseries, timestamps, x_axis, y_axis, z_axis, **kwargs):
     sb.set()
     if type(timeseries) != np.array:
@@ -519,7 +534,7 @@ if __name__ == '__main__':
     """
     for when i do stuff on linux
     """
-    fc_1 = fiberPhotometryCurve('/home/ryansenne/Data/Rebecca/Test_Pho_engram_ChR2_m1_FC.csv', None,
+    fc_1 = fiberPhotometryCurve('/home/ryansenne/Data/Rebecca/Test_Pho_engram_ChR2_m1_FC.csv', None, off_set=4,
                                 **{'treatment': 'ChR2', 'task': 'FC'})
     fc_2 = fiberPhotometryCurve('/home/ryansenne/Data/Rebecca/Test_Pho_engram_ChR2_m2_FC.csv', None,
                                 **{'treatment': 'ChR2', 'task': 'FC'})
@@ -538,5 +553,10 @@ if __name__ == '__main__':
 
     fc_experiment = fiberPhotometryExperiment(fc_1, fc_2, fc_3, fc_4, fc_5, fc_6, fc_7, fc_8)
 
-    z, z1, z2 = fc_experiment.event_triggered_average('GCaMP', 124, 10, 'FC-ChR2')
-    fc_experiment.plot_eta('GCaMP', 124, 10, 'FC-ChR2', 'FC-eYFP')
+    # z, z1, z2 = fc_experiment.event_triggered_average('GCaMP', 124, 10, 'FC-ChR2')
+    # fc_experiment.plot_eta('GCaMP', 124, 10, 'FC-ChR2', 'FC-eYFP')
+
+    # b_test = b_spline.bSpline(120, 3, 9)
+    # maps, dicts = b_test.create_spline_map([1100, 1650, 2200, 2800], len(fc_1.DF_F_Signals['GCaMP']))
+    # model = fc_1.fit_general_linear_model('GCaMP', dicts)
+    # model.predict(sm.add_constant(sm.add_constant(pd.DataFrame(dicts))))
