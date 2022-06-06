@@ -7,7 +7,7 @@ import pandas as pd
 import scipy.stats
 import seaborn as sb
 import statsmodels.api as sm
-import b_spline
+# import b_spline
 from scipy import sparse
 from scipy.integrate import simpson
 from scipy.interpolate import splrep, splev
@@ -25,8 +25,8 @@ class fiberPhotometryCurve:
         :param npm_file: str Path to csv fiber photometry file gathered using a neurophotometrics fp3002 rig and bonsai software
         :param behavioral_data: Path(s) to csv files, either deeplabcut or anymaze, for doing behavioral analysis
         :param keystroke_offset: Value corresponding to a keystroke press in bonsai for removing irrelevant data
-        :param manual_off_set: Value obtained from calcualting offset from expected event i.e. blue light and its theoretical appearance in video
-        :param kwargs: dict containing values such as "ID", "task", and/or "treatment" note: task and ttreatment necessary for use in fiberPhotometryExperiment
+        :param manual_off_set: Value obtained from calculating offset from expected event i.e. blue light and its theoretical appearance in video
+        :param kwargs: dict containing values such as "ID", "task", and/or "treatment" note: task and treatment necessary for use in fiberPhotometryExperiment
 
 
         """
@@ -277,8 +277,30 @@ class fiberPhotometryCurve:
             raise KeyError(f'{signal} is not in {self}')
         return
 
-    def find_beh(self):
-        pass
+    def process_anymaze(self, anymaze_file, timestamps):
+        length = len(timestamps)
+        times = anymaze_file.Time.str.split(':')
+        for i in range(len(times)):
+            anymaze_file.loc[i, 'seconds'] = (float(times[i][1]) * 60 + float(times[i][2]))
+        anymaze_file.seconds = anymaze_file['seconds'].apply(
+            lambda x: (x / anymaze_file.seconds.iloc[-1] * timestamps[-1]))
+        binary_freeze_vec = np.zeros(shape=(length))
+        i = 0
+        while i < len(times):
+            if anymaze_file.loc[i, 'Freezing'] == 1:
+                t1 = anymaze_file.loc[i, 'seconds']
+                t2 = anymaze_file.loc[i + 1, 'seconds']
+                try:
+                    binary_freeze_vec[np.where(timestamps > t1)[0][0]:np.where(timestamps < t2)[0][-1]] = 1
+                    print(np.where(timestamps > t1)[0][0], np.where(timestamps < t2)[0][-1])
+                except IndexError:
+                    binary_freeze_vec[np.where(timestamps > t1)[0][0]:np.where(timestamps < t2)[0][-1]] = 1
+                i += 1
+            else:
+                i += 1
+        time_val_0 = [anymaze_file.seconds[i] for i in range(1, len(anymaze_file)) if anymaze_file.Freezing[i] == 0]
+        inds = [np.argmin(np.abs(timestamps - time_val)) for time_val in time_val_0]
+        return anymaze_file, binary_freeze_vec, inds
 
     def save_fp(self, filename):
         file = open(filename, 'wb')
@@ -534,24 +556,24 @@ if __name__ == '__main__':
     """
     for when i do stuff on linux
     """
-    fc_1 = fiberPhotometryCurve('/home/ryansenne/Data/Rebecca/Test_Pho_engram_ChR2_m1_FC.csv', None, off_set=4,
+    fc_1 = fiberPhotometryCurve('/Users/ryansenne/Desktop/Rebecca_Data/Test_Pho_engram_ChR2_m1_FC.csv', None, None, None,
                                 **{'treatment': 'ChR2', 'task': 'FC'})
-    fc_2 = fiberPhotometryCurve('/home/ryansenne/Data/Rebecca/Test_Pho_engram_ChR2_m2_FC.csv', None,
-                                **{'treatment': 'ChR2', 'task': 'FC'})
-    fc_3 = fiberPhotometryCurve('/home/ryansenne/Data/Rebecca/Test_Pho_engram_ChR2_m3_FC.csv', None,
-                                **{'treatment': 'ChR2', 'task': 'FC'})
-    fc_4 = fiberPhotometryCurve('/home/ryansenne/Data/Rebecca/Test_Pho_engram_ChR2_m4_FC.csv', None,
-                                **{'treatment': 'ChR2', 'task': 'FC'})
-    fc_5 = fiberPhotometryCurve('/home/ryansenne/Data/Rebecca/Test_Pho_engram_eYFP_m1_FC.csv', None,
-                                **{'treatment': 'eYFP', 'task': 'FC'})
-    fc_6 = fiberPhotometryCurve('/home/ryansenne/Data/Rebecca/Test_Pho_engram_eYFP_m2_FC.csv', None,
-                                **{'treatment': 'eYFP', 'task': 'FC'})
-    fc_7 = fiberPhotometryCurve('/home/ryansenne/Data/Rebecca/Test_Pho_engram_eYFP_m3_FC.csv', None,
-                                **{'treatment': 'eYFP', 'task': 'FC'})
-    fc_8 = fiberPhotometryCurve('/home/ryansenne/Data/Rebecca/Test_Pho_engram_eYFP_m4_FC.csv', None,
-                                **{'treatment': 'eYFP', 'task': 'FC'})
-
-    fc_experiment = fiberPhotometryExperiment(fc_1, fc_2, fc_3, fc_4, fc_5, fc_6, fc_7, fc_8)
+    # fc_2 = fiberPhotometryCurve('/home/ryansenne/Data/Rebecca/Test_Pho_engram_ChR2_m2_FC.csv', None,
+    #                             **{'treatment': 'ChR2', 'task': 'FC'})
+    # fc_3 = fiberPhotometryCurve('/home/ryansenne/Data/Rebecca/Test_Pho_engram_ChR2_m3_FC.csv', None,
+    #                             **{'treatment': 'ChR2', 'task': 'FC'})
+    # fc_4 = fiberPhotometryCurve('/home/ryansenne/Data/Rebecca/Test_Pho_engram_ChR2_m4_FC.csv', None,
+    #                             **{'treatment': 'ChR2', 'task': 'FC'})
+    # fc_5 = fiberPhotometryCurve('/home/ryansenne/Data/Rebecca/Test_Pho_engram_eYFP_m1_FC.csv', None,
+    #                             **{'treatment': 'eYFP', 'task': 'FC'})
+    # fc_6 = fiberPhotometryCurve('/home/ryansenne/Data/Rebecca/Test_Pho_engram_eYFP_m2_FC.csv', None,
+    #                             **{'treatment': 'eYFP', 'task': 'FC'})
+    # fc_7 = fiberPhotometryCurve('/home/ryansenne/Data/Rebecca/Test_Pho_engram_eYFP_m3_FC.csv', None,
+    #                             **{'treatment': 'eYFP', 'task': 'FC'})
+    # fc_8 = fiberPhotometryCurve('/home/ryansenne/Data/Rebecca/Test_Pho_engram_eYFP_m4_FC.csv', None,
+    #                             **{'treatment': 'eYFP', 'task': 'FC'})
+    #
+    # fc_experiment = fiberPhotometryExperiment(fc_1, fc_2, fc_3, fc_4, fc_5, fc_6, fc_7, fc_8)
 
     # z, z1, z2 = fc_experiment.event_triggered_average('GCaMP', 124, 10, 'FC-ChR2')
     # fc_experiment.plot_eta('GCaMP', 124, 10, 'FC-ChR2', 'FC-eYFP')
@@ -560,3 +582,9 @@ if __name__ == '__main__':
     # maps, dicts = b_test.create_spline_map([1100, 1650, 2200, 2800], len(fc_1.DF_F_Signals['GCaMP']))
     # model = fc_1.fit_general_linear_model('GCaMP', dicts)
     # model.predict(sm.add_constant(sm.add_constant(pd.DataFrame(dicts))))
+
+
+
+time = fc_1.Timestamps['GCaMP']
+my_behave_file = pd.read_csv('/Users/ryansenne/Desktop/Rebecca_Data/Engram_Round2_FC_Freeze - ChR2_m1.csv')
+x, y, z = fc_1.process_anymaze(my_behave_file, time)
