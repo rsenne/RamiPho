@@ -210,10 +210,16 @@ class fiberPhotometryCurve:
 
     @staticmethod
     def _df_f(raw, kind="std"):
-        F0 = np.median(raw)
+        """
+        :param raw: a smoothed baseline-corrected array of fluorescence values
+        :param kind: whether you want standard df/f or if you would like a z-scored scaling
+        :return: df/f standard or z-scored
+        Function to calculate DF/F (signal - median / median or standard deviation).
+        """
+        F0 = np.median(raw)  # median value of time series
         if kind == "standard":
             df_f = (raw - F0) / F0
-        else:
+        else:  # z-scored
             df_f = (raw - F0) / np.std(raw)
         return df_f
 
@@ -556,7 +562,8 @@ if __name__ == '__main__':
     """
     for when i do stuff on linux
     """
-    fc_1 = fiberPhotometryCurve('/Users/ryansenne/Desktop/Rebecca_Data/Test_Pho_engram_ChR2_m1_FC.csv', None, None, None,
+    fc_1 = fiberPhotometryCurve('/Users/ryansenne/Desktop/Rebecca_Data/Test_Pho_engram_ChR2_m1_FC.csv', None, None,
+                                None,
                                 **{'treatment': 'ChR2', 'task': 'FC'})
     # fc_2 = fiberPhotometryCurve('/home/ryansenne/Data/Rebecca/Test_Pho_engram_ChR2_m2_FC.csv', None,
     #                             **{'treatment': 'ChR2', 'task': 'FC'})
@@ -582,8 +589,6 @@ if __name__ == '__main__':
     # maps, dicts = b_test.create_spline_map([1100, 1650, 2200, 2800], len(fc_1.DF_F_Signals['GCaMP']))
     # model = fc_1.fit_general_linear_model('GCaMP', dicts)
     # model.predict(sm.add_constant(sm.add_constant(pd.DataFrame(dicts))))
-
-
 
 time = fc_1.Timestamps['GCaMP']
 my_behave_file = pd.read_csv('/Users/ryansenne/Desktop/Rebecca_Data/Engram_Round2_FC_Freeze - ChR2_m1.csv')
