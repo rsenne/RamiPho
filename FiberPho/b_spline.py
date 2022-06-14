@@ -30,7 +30,13 @@ class bSpline:
     def create_spline_map(self, left_inds, length):
         spl_map = np.zeros(shape=(np.shape(self.b)[1], length))
         for i in range(np.shape(spl_map)[0]):
-            for ind in left_inds:
-                spl_map[i, ind:ind + np.shape(self.b)[0]] = self.b[:, i]
+            try:
+                for ind in left_inds:
+                    spl_map[i, ind:ind + np.shape(self.b)[0]] = self.b[:, i]
+            except ValueError:
+                for ind in left_inds[:-2]:
+                    spl_map[i, ind:ind + np.shape(self.b)[0]] = self.b[:, i]
+
+
         spl_dict = {f"spline_var{i}": spl_map[i, :] for i in range(np.shape(spl_map)[0])}
         return spl_map, spl_dict

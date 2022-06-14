@@ -7,7 +7,7 @@ import pandas as pd
 import scipy.stats
 import seaborn as sb
 import statsmodels.api as sm
-# import b_spline
+import b_spline
 from scipy import sparse
 from scipy.integrate import simpson
 from scipy.interpolate import splrep, splev
@@ -16,7 +16,6 @@ from scipy.signal import find_peaks
 from scipy.sparse.linalg import spsolve
 
 __all__ = ["fiberPhotometryCurve", "fiberPhotometryExperiment"]
-
 
 class fiberPhotometryCurve:
     def __init__(self, npm_file: str, behavioral_data: str = None, keystroke_offset=None, manual_off_set=None,
@@ -27,7 +26,6 @@ class fiberPhotometryCurve:
         :param keystroke_offset: Value corresponding to a keystroke press in bonsai for removing irrelevant data
         :param manual_off_set: Value obtained from calculating offset from expected event i.e. blue light and its theoretical appearance in video
         :param kwargs: dict containing values such as "ID", "task", and/or "treatment" note: task and treatment necessary for use in fiberPhotometryExperiment
-
 
         """
 
@@ -280,8 +278,12 @@ class fiberPhotometryCurve:
     def process_anymaze(self, anymaze_file, timestamps):
         length = len(timestamps)
         times = anymaze_file.Time.str.split(':')
-        for i in range(len(times)):
-            anymaze_file.loc[i, 'seconds'] = (float(times[i][1]) * 60 + float(times[i][2]))
+        if len(times[1]) == 3:
+            for i in range(len(times)):
+                anymaze_file.loc[i, 'seconds'] = (float(times[i][1]) * 60 + float(times[i][2]))
+        else:
+            for i in range(len(times)):
+                anymaze_file.loc[i, 'seconds'] = (float(times[i][0]) * 60 + float(times[i][1]))
         anymaze_file.seconds = anymaze_file['seconds'].apply(
             lambda x: (x / anymaze_file.seconds.iloc[-1] * timestamps[-1]))
         binary_freeze_vec = np.zeros(shape=(length))
@@ -292,7 +294,7 @@ class fiberPhotometryCurve:
                 t2 = anymaze_file.loc[i + 1, 'seconds']
                 try:
                     binary_freeze_vec[np.where(timestamps > t1)[0][0]:np.where(timestamps < t2)[0][-1]] = 1
-                    print(np.where(timestamps > t1)[0][0], np.where(timestamps < t2)[0][-1])
+                    #print(np.where(timestamps > t1)[0][0], np.where(timestamps < t2)[0][-1])
                 except IndexError:
                     binary_freeze_vec[np.where(timestamps > t1)[0][0]:np.where(timestamps < t2)[0][-1]] = 1
                 i += 1
@@ -330,6 +332,26 @@ class fiberPhotometryCurve:
         for prop in self.peak_properties[curve_type]:
             self.peak_properties[curve_type][prop] = np.delete(self.peak_properties[curve_type][prop], deletion_list)
         return
+
+    def within_trial_eta(self, curve, event_times, window, timepoints=True):
+        ind_plus = int(window // self._sample_time_)
+        if timepoints:
+            inds = [np.argmin(np.abs(self.Timestamps[curve] - event_time)) for event_time in event_times]
+            event_times = inds
+        else:
+            inds = event_times
+        bound_cases = int(len(list(x for x in event_times if ((x + ind_plus) - (x - int(ind_plus/2))) < len(self.DF_F_Signals[curve][event_times[0]-(int(ind_plus/2)):event_times[0]+ind_plus]))))
+        if bound_cases == 0:
+            part_traces = np.array([self.DF_F_Signals[curve][ind-(int(ind_plus/2)):ind+ind_plus].tolist() for ind in inds])
+        else:
+            part_traces = np.array(
+                [self.DF_F_Signals[curve][ind - (int(ind_plus / 2)):ind + ind_plus].tolist() for ind in inds[:-bound_cases]])
+        eta = np.average(part_traces, axis=0)
+        ci = 1.96 * np.std(part_traces, axis=0) / np.sqrt(np.shape(part_traces)[0])
+        time_int = np.linspace(-(window/2), window, len(self.DF_F_Signals[curve][event_times[0]-(int(ind_plus/2)):event_times[0]+ind_plus]))
+        return eta, ci, time_int
+
+
 
     def eliminate_extreme_values(self):
         return
@@ -496,6 +518,17 @@ class fiberPhotometryExperiment:
             plt.show()
         return averaged_trace, average_time[index_left_bound:index_right_bound], ci
 
+    # test this function
+    def bootstrap(self, inds, average_trace, window, niter):
+        average_trace_copy = average_trace
+        actual_values = [max(average_trace_copy[i:i+window] for i in inds)]
+        avg_max = []
+        for i in range(niter):
+            np.random.shuffle(average_trace)
+            max_average = np.average([max(average_trace[i:i+window] for i in inds)])
+            avg_max.append(max_average)
+        return avg_max, actual_values
+
     def plot_eta(self, curve, event_time, window, *args):
         for arg in args:
             av_tr, av_ti, ci = self.event_triggered_average(curve, event_time, window, arg)
@@ -558,8 +591,8 @@ if __name__ == '__main__':
     """
     fc_1 = fiberPhotometryCurve('/Users/ryansenne/Desktop/Rebecca_Data/Test_Pho_engram_ChR2_m1_FC.csv', None, None, None,
                                 **{'treatment': 'ChR2', 'task': 'FC'})
-    # fc_2 = fiberPhotometryCurve('/home/ryansenne/Data/Rebecca/Test_Pho_engram_ChR2_m2_FC.csv', None,
-    #                             **{'treatment': 'ChR2', 'task': 'FC'})
+    # fc_2 = fiberPhotometryCurve('/Users/ryansenne/Desktop/Rebecca/Test_Pho_engram_ChR2_m2_FC.csv', None, None, None,
+    #                              **{'treatment': 'eYFP', 'task': 'FC'})
     # fc_3 = fiberPhotometryCurve('/home/ryansenne/Data/Rebecca/Test_Pho_engram_ChR2_m3_FC.csv', None,
     #                             **{'treatment': 'ChR2', 'task': 'FC'})
     # fc_4 = fiberPhotometryCurve('/home/ryansenne/Data/Rebecca/Test_Pho_engram_ChR2_m4_FC.csv', None,
@@ -578,13 +611,17 @@ if __name__ == '__main__':
     # z, z1, z2 = fc_experiment.event_triggered_average('GCaMP', 124, 10, 'FC-ChR2')
     # fc_experiment.plot_eta('GCaMP', 124, 10, 'FC-ChR2', 'FC-eYFP')
 
-    # b_test = b_spline.bSpline(120, 3, 9)
-    # maps, dicts = b_test.create_spline_map([1100, 1650, 2200, 2800], len(fc_1.DF_F_Signals['GCaMP']))
-    # model = fc_1.fit_general_linear_model('GCaMP', dicts)
-    # model.predict(sm.add_constant(sm.add_constant(pd.DataFrame(dicts))))
 
 
 
+
+#
 time = fc_1.Timestamps['GCaMP']
 my_behave_file = pd.read_csv('/Users/ryansenne/Desktop/Rebecca_Data/Engram_Round2_FC_Freeze - ChR2_m1.csv')
 x, y, z = fc_1.process_anymaze(my_behave_file, time)
+q, qq, qqq = fc_1.within_trial_eta('GCaMP', [124,184,244,304], 3)
+# b_test = b_spline.bSpline(120, 3, 9)
+# maps, dicts = b_test.create_spline_map(z, len(fc_1.DF_F_Signals['GCaMP']))
+# dicts['binary_freeze'] = y
+# model = fc_1.fit_general_linear_model('GCaMP', dicts)
+# plt.plot(model.predict(sm.add_constant(sm.add_constant(pd.DataFrame(dicts)))))
