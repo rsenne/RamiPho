@@ -18,7 +18,7 @@ from scipy.sparse.linalg import spsolve
 __all__ = ["fiberPhotometryCurve", "fiberPhotometryExperiment"]
 
 class fiberPhotometryCurve:
-    def __init__(self, npm_file: str, behavioral_data: str = None, keystroke_offset=None, manual_off_set=None,
+    def __init__(self, npm_file: str, behavioral_data: str = None, keystroke_offset=None, manual_off_set=None, remove_extrema=False,
                  **kwargs):
         """
         :param npm_file: str Path to csv fiber photometry file gathered using a neurophotometrics fp3002 rig and bonsai software
@@ -32,14 +32,16 @@ class fiberPhotometryCurve:
         # these should always be present
         self.npm_file = npm_file
         self.behavioral_data = behavioral_data
+        self.fp_df = pd.read_csv(self.npm_file)
+        self.__T0__ = self.fp_df['Timestamp'][1]
+
+        # unpack extra params
         for key, value in kwargs.items():
             setattr(self, key, value)
 
-        # read the file
-        self.fp_df = pd.read_csv(self.npm_file)
-
         # determine sample time
         self._sample_time_ = np.diff(self.fp_df['Timestamp'])[1]
+
 
         if manual_off_set:
             self.fp_df = self.fp_df[int(manual_off_set // self._sample_time_):].reset_index()
@@ -47,6 +49,7 @@ class fiberPhotometryCurve:
         if keystroke_offset:
             ind = self.fp_df[self.fp_df['Timestamp'] == keystroke_offset]
             self.fp_df = self.fp_df[ind:].reset_index()
+
 
         # check to see if using old files
         if "Flags" in self.fp_df.columns:
@@ -93,7 +96,7 @@ class fiberPhotometryCurve:
                                "RCaMP": np.array(gcamp['Region1R']),
                                "Isobestic_GCaMP": np.array(isobestic_gcamp),
                                "Isobestic_RCaMP": np.array(isobestic_rcamp)}
-                self.Timestamps = {signal: time.reset_index(drop=True).tolist() - self.fp_df['Timestamp'][1]
+                self.Timestamps = {signal: time.reset_index(drop=True).tolist() - self.__T0__
                                    for
                                    signal, time in zip(['Isobestic_GCaMP', 'Isobestic_RCaMP', 'GCaMP', 'RCaMP'],
                                                        [isobestic.Timestamp, isobestic.Timestamp, gcamp.Timestamp,
@@ -106,7 +109,7 @@ class fiberPhotometryCurve:
                                "RCaMP": np.array(gcamp['Region0R']),
                                "Isobestic_GCaMP": np.array(isobestic_gcamp),
                                "Isobestic_RCaMP": np.array(isobestic_rcamp)}
-                self.Timestamps = {signal: time.values.tolist() - self.fp_df['Timestamp'][1] for
+                self.Timestamps = {signal: time.values.tolist() - self.__T0__ for
                                    signal, time in zip(['Isobestic_GCaMP', 'Isobestic_RCaMP', 'GCaMP', 'RCaMP'],
                                                        [isobestic.Timestamp, isobestic.Timestamp, gcamp.Timestamp,
                                                         rcamp.Timestamp])}
@@ -116,7 +119,7 @@ class fiberPhotometryCurve:
 
             try:
                 gcamp = self.fp_df[self.fp_df['LedState'] == 2]
-                self.Timestamps = {signal: time.values.tolist() - self.fp_df['Timestamp'][1] for
+                self.Timestamps = {signal: time.values.tolist() - self.__T0__ for
                                    signal, time in
                                    zip(['GCaMP_Isobestic', 'GCaMP'], [isobestic.Timestamp, gcamp.Timestamp])}
 
@@ -130,7 +133,7 @@ class fiberPhotometryCurve:
 
             except KeyError:
                 rcamp = self.fp_df[self.fp_df['LedState'] == 4]
-                self.Timestamps = {signal: time.values.tolist() - self.fp_df['Timestamp'][1] for
+                self.Timestamps = {signal: time.values.tolist() - self.__T0__ for
                                    signal, time in zip(['RCaMP_Isobestic', 'RCaMP'], [isobestic, rcamp])}
 
                 if self.__CONF1:
@@ -353,8 +356,10 @@ class fiberPhotometryCurve:
 
 
 
-    def eliminate_extreme_values(self):
-        return
+    def eliminate_extreme_values(self, curve, for_i, j):
+        rolled_average = [np.average(np.diff(self.Signal[curve])[i:i+j]) for i in range(for_i)]
+        indice_extrema = np.where(np.diff(rolled_average) < 0)[0] - 1
+        return indice_extrema
 
 
 class fiberPhotometryExperiment:
@@ -589,7 +594,7 @@ if __name__ == '__main__':
     """
     for when i do stuff on linux
     """
-    fc_1 = fiberPhotometryCurve('/Users/ryansenne/Desktop/Rebecca_Data/Test_Pho_engram_ChR2_m1_FC.csv', None, None, None,
+    fc_1 = fiberPhotometryCurve('/Users/ryansenne/Desktop/Rebecca_Data/Test_Pho_engram_ChR2_m1_OPTO.csv', None, None, None,
                                 **{'treatment': 'ChR2', 'task': 'FC'})
     # fc_2 = fiberPhotometryCurve('/Users/ryansenne/Desktop/Rebecca/Test_Pho_engram_ChR2_m2_FC.csv', None, None, None,
     #                              **{'treatment': 'eYFP', 'task': 'FC'})
@@ -617,9 +622,10 @@ if __name__ == '__main__':
 
 #
 time = fc_1.Timestamps['GCaMP']
-my_behave_file = pd.read_csv('/Users/ryansenne/Desktop/Rebecca_Data/Engram_Round2_FC_Freeze - ChR2_m1.csv')
-x, y, z = fc_1.process_anymaze(my_behave_file, time)
-q, qq, qqq = fc_1.within_trial_eta('GCaMP', [124,184,244,304], 3)
+# my_behave_file = pd.read_csv('/Users/ryansenne/Desktop/Rebecca_Data/Engram_Round2_FC_Freeze - ChR2_m1.csv')
+# x, y, z = fc_1.process_anymaze(my_behave_file, time)
+# q, qq, qqq = fc_1.within_trial_eta('GCaMP', [124,184,244,304], 3)
+ff = fc_1.eliminate_extreme_values('GCaMP', 50, 5)
 # b_test = b_spline.bSpline(120, 3, 9)
 # maps, dicts = b_test.create_spline_map(z, len(fc_1.DF_F_Signals['GCaMP']))
 # dicts['binary_freeze'] = y
