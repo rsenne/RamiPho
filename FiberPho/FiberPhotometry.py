@@ -308,6 +308,64 @@ class fiberPhotometryCurve:
         inds = [np.argmin(np.abs(timestamps - time_val)) for time_val in time_val_0]
         return anymaze_file, binary_freeze_vec, inds
 
+    def calc_kinematics(self, DLC_file, bps=None):
+        # read and formats csv file, dropping unnamed
+        if bps is None:
+            bps = ['snout', 'l_ear', 'r_ear', 'front_l_paw', 'front_r_paw', 'back_l_paw', 'back_r_paw',
+                   'base_of_tail']
+        df = pd.read_csv(DLC_file, header=[1, 2])
+        df = df.dropna(how='all')
+        df = df.dropna(1)
+        df.columns = df.columns.get_level_values(0) + '_' + df.columns.get_level_values(1)
+
+        # converts to second by dividing number of frames+1 by the frame number
+        df["bodyparts_coords"] = df["bodyparts_coords"].apply(lambda x: x / 29)
+        # creates seconds column
+        df.rename(columns={'bodyparts_coords': 'seconds'}, inplace=True)
+
+        
+        # if probability less than .6, looks at frame before and frame after and takes average
+        for row in range(len(df)):
+            # interpolating missing values
+            for bp in bps:
+                try:
+                    # threshold as variable
+                    if (df.at[row, bp + '_likelihood'] <= .6 and df.at[row - 1, bp + '_likelihood'] > .6 and df.at[
+                        row + 1, bp + '_likelihood'] > .6):
+                        df.at[row, bp + '_x'] = (df.at[row - 1, bp + '_x'] + df.at[
+                            row + 1, bp + '_x']) / 2  # average of x values in sandwiching rows
+                        df.at[row, bp + '_y'] = (df.at[row - 1, bp + '_y'] + df.at[
+                            row + 1, bp + '_y']) / 2  # average of x values in sandwiching rows
+                        df.at[
+                            row, bp + '_likelihood'] = .61  # assigns a >.6 likelihood so will be counted when computing centroid values
+                except KeyError:
+                    if (df.at[row, bp + '_likelihood'] <= .6 and df.at[
+                        row + 1, bp + '_likelihood'] > .6):
+                        df.at[row, bp + '_x'] = df.at[
+                            row + 1, bp + '_x']
+                except:
+                    if (df.at[row, bp + '_likelihood'] <= .6 and df.at[
+                        row - 1, bp + '_likelihood'] > .6):
+                        df.at[row, bp + '_x'] = df.at[
+                            row - 1, bp + '_x']
+
+        df.at[0, 'distance'] = 0
+
+        # calculates centroid values for x and y
+        for i in range(len(df)):
+            df.at[i, 'centroid_x'] = np.average(
+                [df.at[i, f"{b_part}" + "_x"] for b_part in bps if df.at[i, f"{b_part}" + "_likelihood"] > 0.6])
+            df.at[i, 'centroid_y'] = np.average(
+                [df.at[i, f"{b_part}" + "_y"] for b_part in bps if df.at[i, f"{b_part}" + "_likelihood"] > 0.6])
+            if (i > 0):
+                df.at[i, 'distance'] = np.sqrt((df.at[i - 1, 'centroid_x'] - df.at[i, 'centroid_x']) ** 2 + (
+                            df.at[i - 1, 'centroid_y'] - df.at[i, 'centroid_y']) ** 2)
+
+        # create new column of center of masses
+        return df
+
+        # calc_kinematics('/Users/michellebuzharsky/Downloads/excel_practice.csv')
+
     def save_fp(self, filename):
         file = open(filename, 'wb')
         pkl.dump(self, file)
