@@ -308,7 +308,7 @@ class fiberPhotometryCurve:
         inds = [np.argmin(np.abs(timestamps - time_val)) for time_val in time_val_0]
         return anymaze_file, binary_freeze_vec, inds
 
-    def calc_kinematics(self, DLC_file, bps=None):
+    def calc_kinematics(self, DLC_file, bps=None, interpolate = False):
         # read and formats csv file, dropping unnamed
         if bps is None:
             bps = ['snout', 'l_ear', 'r_ear', 'front_l_paw', 'front_r_paw', 'back_l_paw', 'back_r_paw',
@@ -323,7 +323,7 @@ class fiberPhotometryCurve:
         # creates seconds column
         df.rename(columns={'bodyparts_coords': 'seconds'}, inplace=True)
 
-        
+
         # if probability less than .6, looks at frame before and frame after and takes average
         for row in range(len(df)):
             # interpolating missing values
@@ -350,6 +350,67 @@ class fiberPhotometryCurve:
                             row - 1, bp + '_x']
 
         df.at[0, 'distance'] = 0
+
+        #interpolates for 100 frames
+        if (interpolate == True):
+
+            # interpolates for next 100 frames
+            for bp in bps:  # GOES BODY PART AT A TIME
+                print("bp is " + bp)
+                row = 0  # counter for row
+                while row < len(df) - 1:
+                    num = 0  # counter for how many nums to fill in
+                    og_x = 0
+                    og_y = 0
+
+                    # finds first value where next value has below threshold prob
+                    print("row is " + str(row))
+                    print("len is " + str(len(df)))
+                    if (df.at[row, bp + '_likelihood'] > .6) and (row != len(df)) and (
+                            df.at[row + 1, bp + '_likelihood'] <= .6):
+                        # og nums, to be used later when calculating how much to add to each number
+                        og_x = df.at[row, bp + '_x']
+                        og_y = df.at[row, bp + '_y']
+                        row += 1
+                        # is going to move onto the next row
+                        while (num <= 100):
+                            f = num + row  # row value is still og, num is how many frames it moves, so f is current row to check
+                            print("f is " + str(f))
+                            print("num is " + str(num))
+                            if (num > 100) or (f > len(
+                                    df) - 1):  # if pass 100 frames, give up updating for this cycle, update row, and then reset everything, or if get to end of dataframe
+                                row += num
+                                num = 0
+                                og_y = 0
+                                og_x = 0
+                                break
+                            elif (df.at[
+                                      f, bp + '_likelihood'] > .6):  # next value is >.6, will be final value, need another loop to reupdate
+                                final_x = df.at[f, bp + '_x']
+                                final_y = df.at[f, bp + '_y']
+                                print("final  x is " + str(final_x))
+                                print("og x is " + str(og_x))
+                                update_x = (final_x - og_x) / (num + 1)  # number to increment x by
+                                update_y = (final_y - og_y) / (num + 1)  # number to increment y by
+                                print("update_x is " + str(update_x))
+                                n = 1
+                                for ind in range(row, f):  # number to multiply update_val by
+
+                                    df.at[ind, bp + '_x'] = og_x + update_x * (n)
+                                    print(str(df.at[ind, bp + '_x']))
+                                    df.at[ind, bp + '_y'] = og_y + update_y * n
+                                    df.at[ind, bp + '_likelihood'] = .61
+                                    n += 1
+                                    print("ind is " + str(ind))
+                                row += num
+                                num = 0
+                                og_y = 0
+                                og_x = 0
+                                break  # break out of loop, update row
+                            else:  # next value is <.6, keep going and update num
+                                num += 1
+                    else:
+                        row += 1
 
         # calculates centroid values for x and y
         for i in range(len(df)):
