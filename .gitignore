@@ -136,3 +136,8 @@ FiberPho/.idea/workspace.xml
 *.csv
 FiberPho/Test_Photometry.py
 .idea/other.xml
+.idea/modules.xml
+.idea/vcs.xml
+.idea/vcs.xml
+.idea/modules.xml
+*.iml
