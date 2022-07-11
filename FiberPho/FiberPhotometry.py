@@ -308,11 +308,25 @@ class fiberPhotometryCurve:
         inds = [np.argmin(np.abs(timestamps - time_val)) for time_val in time_val_0]
         return anymaze_file, binary_freeze_vec, inds
 
-    def calc_kinematics(self, DLC_file, bps=None, interpolate = False):
-        # read and formats csv file, dropping unnamed
+    def calc_kinematics(self, DLC_file, bps=None, interpolate=False, int_f = 0, threshold = .6):
+
+        """
+
+        :param DLC_file: DLC-processed csv file
+        :param bps: array of labeled body parts
+        :param interpolate: boolean expression, interpolates x and y coordinates for a variable number of frames whose probabilities are less than threshold amount
+        :param int_f: variable for maximum number of frames to  interpolate
+        :param threshold: variable for minimum probability to threshold,  values higher  than threshold  will be kept, interpolated frames  will be set to threshold + .001
+        :return: data frame  with interpolated  x and  y coordinates and probabilities, x and y centroid columns, distance, velocity, and acceleration
+        Function to calculate kinematics i.e. distance, velocity, acceleration
+        """
+
+        #default  body part  array
         if bps is None:
             bps = ['snout', 'l_ear', 'r_ear', 'front_l_paw', 'front_r_paw', 'back_l_paw', 'back_r_paw',
                    'base_of_tail']
+
+        #cleans up csv file
         df = pd.read_csv(DLC_file, header=[1, 2])
         df = df.dropna(how='all')
         df = df.dropna(1)
@@ -323,40 +337,13 @@ class fiberPhotometryCurve:
         # creates seconds column
         df.rename(columns={'bodyparts_coords': 'seconds'}, inplace=True)
 
-
-        # if probability less than .6, looks at frame before and frame after and takes average
-        for row in range(len(df)):
-            # interpolating missing values
-            for bp in bps:
-                try:
-                    # threshold as variable
-                    if (df.at[row, bp + '_likelihood'] <= .6 and df.at[row - 1, bp + '_likelihood'] > .6 and df.at[
-                        row + 1, bp + '_likelihood'] > .6):
-                        df.at[row, bp + '_x'] = (df.at[row - 1, bp + '_x'] + df.at[
-                            row + 1, bp + '_x']) / 2  # average of x values in sandwiching rows
-                        df.at[row, bp + '_y'] = (df.at[row - 1, bp + '_y'] + df.at[
-                            row + 1, bp + '_y']) / 2  # average of x values in sandwiching rows
-                        df.at[
-                            row, bp + '_likelihood'] = .61  # assigns a >.6 likelihood so will be counted when computing centroid values
-                except KeyError:
-                    if (df.at[row, bp + '_likelihood'] <= .6 and df.at[
-                        row + 1, bp + '_likelihood'] > .6):
-                        df.at[row, bp + '_x'] = df.at[
-                            row + 1, bp + '_x']
-                except:
-                    if (df.at[row, bp + '_likelihood'] <= .6 and df.at[
-                        row - 1, bp + '_likelihood'] > .6):
-                        df.at[row, bp + '_x'] = df.at[
-                            row - 1, bp + '_x']
-
+        #creates distance column,  sets distance  at  time 0  to 0
         df.at[0, 'distance'] = 0
 
-        #interpolates for 100 frames
-        if (interpolate == True):
-
-            # interpolates for next 100 frames
+        # interpolates for 100 frames
+        if interpolate:
+            # interpolates for next int_f frames
             for bp in bps:  # GOES BODY PART AT A TIME
-                print("bp is " + bp)
                 row = 0  # counter for row
                 while row < len(df) - 1:
                     num = 0  # counter for how many nums to fill in
@@ -364,44 +351,32 @@ class fiberPhotometryCurve:
                     og_y = 0
 
                     # finds first value where next value has below threshold prob
-                    print("row is " + str(row))
-                    print("len is " + str(len(df)))
-                    if (df.at[row, bp + '_likelihood'] > .6) and (row != len(df)) and (
-                            df.at[row + 1, bp + '_likelihood'] <= .6):
+                    if (df.at[row, bp + '_likelihood'] > threshold) and (row != len(df)) and (
+                            df.at[row + 1, bp + '_likelihood'] <= threshold):
                         # og nums, to be used later when calculating how much to add to each number
                         og_x = df.at[row, bp + '_x']
                         og_y = df.at[row, bp + '_y']
                         row += 1
                         # is going to move onto the next row
-                        while (num <= 100):
+                        while (num <= int_f):
                             f = num + row  # row value is still og, num is how many frames it moves, so f is current row to check
-                            print("f is " + str(f))
-                            print("num is " + str(num))
-                            if (num > 100) or (f > len(
-                                    df) - 1):  # if pass 100 frames, give up updating for this cycle, update row, and then reset everything, or if get to end of dataframe
+                            if (num > int_f) or (f > len(df) - 1):  # if pass int_f frames, give up updating for this cycle, update row, and then reset everything, or if get to end of dataframe
                                 row += num
                                 num = 0
                                 og_y = 0
                                 og_x = 0
                                 break
-                            elif (df.at[
-                                      f, bp + '_likelihood'] > .6):  # next value is >.6, will be final value, need another loop to reupdate
+                            elif (df.at[f, bp + '_likelihood'] > threshold):  # next value is greater  than threshold, will be final value, need another loop to reupdate
                                 final_x = df.at[f, bp + '_x']
                                 final_y = df.at[f, bp + '_y']
-                                print("final  x is " + str(final_x))
-                                print("og x is " + str(og_x))
                                 update_x = (final_x - og_x) / (num + 1)  # number to increment x by
                                 update_y = (final_y - og_y) / (num + 1)  # number to increment y by
-                                print("update_x is " + str(update_x))
                                 n = 1
                                 for ind in range(row, f):  # number to multiply update_val by
-
-                                    df.at[ind, bp + '_x'] = og_x + update_x * (n)
-                                    print(str(df.at[ind, bp + '_x']))
+                                    df.at[ind, bp + '_x'] = og_x + update_x * n
                                     df.at[ind, bp + '_y'] = og_y + update_y * n
-                                    df.at[ind, bp + '_likelihood'] = .61
+                                    df.at[ind, bp + '_likelihood'] = threshold +  .001
                                     n += 1
-                                    print("ind is " + str(ind))
                                 row += num
                                 num = 0
                                 og_y = 0
@@ -415,14 +390,14 @@ class fiberPhotometryCurve:
         # calculates centroid values for x and y
         for i in range(len(df)):
             df.at[i, 'centroid_x'] = np.average(
-                [df.at[i, f"{b_part}" + "_x"] for b_part in bps if df.at[i, f"{b_part}" + "_likelihood"] > 0.6])
+                [df.at[i, f"{b_part}" + "_x"] for b_part in bps if df.at[i, f"{b_part}" + "_likelihood"] > threshold])
             df.at[i, 'centroid_y'] = np.average(
-                [df.at[i, f"{b_part}" + "_y"] for b_part in bps if df.at[i, f"{b_part}" + "_likelihood"] > 0.6])
+                [df.at[i, f"{b_part}" + "_y"] for b_part in bps if df.at[i, f"{b_part}" + "_likelihood"] > threshold])
             if (i > 0):
                 df.at[i, 'distance'] = np.sqrt((df.at[i - 1, 'centroid_x'] - df.at[i, 'centroid_x']) ** 2 + (
-                            df.at[i - 1, 'centroid_y'] - df.at[i, 'centroid_y']) ** 2)
+                        df.at[i - 1, 'centroid_y'] - df.at[i, 'centroid_y']) ** 2)
 
-        # create new column of center of masses
+        
         return df
 
         # calc_kinematics('/Users/michellebuzharsky/Downloads/excel_practice.csv')
