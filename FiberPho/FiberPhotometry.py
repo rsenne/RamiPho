@@ -7,7 +7,7 @@ import pandas as pd
 import scipy.stats
 import seaborn as sb
 import statsmodels.api as sm
-import b_spline
+import FiberPho.b_spline
 from scipy import sparse
 from scipy.integrate import simpson
 from scipy.interpolate import splrep, splev
@@ -231,8 +231,8 @@ class fiberPhotometryCurve:
             if abs(np.median(df_f_signals[i])) < 0.05:
                 df_f_signals[i] = self._als_detrend(df_f_signals[i])
         # smoothed like a baby's bottom
-        smoothed_signals = [self.b_smooth(timeseries, self.smooth(sigs, 10)) for timeseries, sigs in
-                            zip(df_f_signals, self.Timestamps.values())]
+        smoothed_signals = [self.smooth(timeseries, kernel=10) for timeseries in
+                            df_f_signals]
         return {identity: signal for identity, signal in zip(self.Signal.keys(), smoothed_signals)}
 
     def fit_general_linear_model(self, curve, ind_vars):
@@ -529,11 +529,26 @@ class fiberPhotometryExperiment:
         return averaged_trace, average_time[index_left_bound:index_right_bound], ci
 
     def mt_event_triggered_average(self, curve, event_times, window, group, plot=False, timepoint=True):
-        times = [t.Timestamps[curve].tolist() for t in next(iter(getattr(self, group).values()))]
-        max_ind = np.min([len(x) for x in times])
+        max_ind = np.min(
+            [len(x) for x in [t.Timestamps[curve].tolist() for t in next(iter(getattr(self, group).values()))]])
         time_array = np.array(
             [time.Timestamps[curve][0:max_ind].tolist() for time in next(iter(getattr(self, group).values()))])
-        return
+        vector_array = np.array(
+            [trace.DF_F_Signals[curve][0:max_ind].tolist() for trace in next(iter(getattr(self, group).values()))])
+        inds = []
+        if timepoint:
+            for i in range(len(event_times)):
+                tps = [np.argmin(np.abs(time_array[i] - event_times[i][j])) for j in range(len(event_times[i]))]
+                inds.append(tps)
+        else:
+            inds = event_times
+        mt_eta = []
+        for animal in range(len(vector_array)):
+            part_traces = [[vector_array[animal][indice - (int( window/ 2)):indice + window].tolist() for indice in inds[animal]]]
+            eta = np.average(part_traces, axis=0)
+            mt_eta.append(eta)
+        av_tr = np.average(mt_eta, axis=0)
+        return av_tr
 
     # test this function
     def bootstrap(self, inds, average_trace, window, niter):
@@ -578,64 +593,3 @@ def make_3d_timeseries(timeseries, timestamps, x_axis, y_axis, z_axis, **kwargs)
     axs.set_ylabel(y_axis)
     axs.set_zlabel(z_axis)
     return
-
-
-if __name__ == '__main__':
-    """
-    for when i do stuff on my mac. note this  is not real analysis and only for testing purposes
-    """
-    # engram_recall_1 = fiberPhotometryCurve(
-    #     '/Users/ryansenne/Desktop/Rebecca_Data/Test_Pho_FP_engram_day1_FC_mouse2.csv',
-    #     None, **{'treatment': 'ChR2', 'task': 'Recall'})
-    #
-    # engram_recall_2 = fiberPhotometryCurve(
-    #     '/Users/ryansenne/Desktop/Rebecca_Data/Test_Pho_FP_engram_day2_recall_mouse3.csv',
-    #     None, **{'treatment': 'ChR2', 'task': 'Recall'})
-    #
-    # sham_recall_1 = fiberPhotometryCurve(
-    #     '/Users/ryansenne/Desktop/Rebecca_Data/Test_Pho_FP_engram_day2_recall_mouse3.csv',
-    #     None, **{'treatment': 'ChR2', 'task': 'Recall'})
-    #
-    # sham_recall_2 = fiberPhotometryCurve(
-    #     '/Users/ryansenne/Desktop/Rebecca_Data/Test_Pho_FP_engram_day2_recall_mouse4.csv',
-    #     None, **{'treatment': 'ChR2', 'task': 'Recall'})
-    #
-    # engram_exp = fiberPhotometryExperiment(engram_recall_1, engram_recall_2, sham_recall_1, sham_recall_2)
-    # z = engram_exp.event_triggered_average('Recall-ChR2', 'GCaMP', 1, 40)
-
-    """
-    for when i do stuff on linux
-    """
-    fc_1 = fiberPhotometryCurve('/home/ryansenne/Data/Rebecca/Test_Pho_engram_ChR2_m1_FC.csv', None, None, None,
-                                **{'treatment': 'ChR2', 'task': 'FC'})
-    fc_2 = fiberPhotometryCurve('/home/ryansenne/Data/Rebecca/Test_Pho_engram_ChR2_m2_FC.csv', None, None, None,
-                                 **{'treatment': 'eYFP', 'task': 'FC'})
-    # fc_3 = fiberPhotometryCurve('/home/ryansenne/Data/Rebecca/Test_Pho_engram_ChR2_m3_FC.csv', None,
-    #                             **{'treatment': 'ChR2', 'task': 'FC'})
-    # fc_4 = fiberPhotometryCurve('/home/ryansenne/Data/Rebecca/Test_Pho_engram_ChR2_m4_FC.csv', None,
-    #                             **{'treatment': 'ChR2', 'task': 'FC'})
-    # fc_5 = fiberPhotometryCurve('/home/ryansenne/Data/Rebecca/Test_Pho_engram_eYFP_m1_FC.csv', None,
-    #                             **{'treatment': 'eYFP', 'task': 'FC'})
-    # fc_6 = fiberPhotometryCurve('/home/ryansenne/Data/Rebecca/Test_Pho_engram_eYFP_m2_FC.csv', None,
-    #                             **{'treatment': 'eYFP', 'task': 'FC'})
-    # fc_7 = fiberPhotometryCurve('/home/ryansenne/Data/Rebecca/Test_Pho_engram_eYFP_m3_FC.csv', None,
-    #                             **{'treatment': 'eYFP', 'task': 'FC'})
-    # fc_8 = fiberPhotometryCurve('/home/ryansenne/Data/Rebecca/Test_Pho_engram_eYFP_m4_FC.csv', None,
-    #                             **{'treatment': 'eYFP', 'task': 'FC'})
-    #
-    fc_experiment = fiberPhotometryExperiment(fc_1, fc_2)
-
-    z, z1, z2 = fc_experiment.st_event_triggered_average('GCaMP', 124, 10, 'FC-ChR2')
-    # fc_experiment.plot_eta('GCaMP', 124, 10, 'FC-ChR2', 'FC-eYFP')
-
-#
-time = fc_1.Timestamps['GCaMP']
-# my_behave_file = pd.read_csv('/Users/ryansenne/Desktop/Rebecca_Data/Engram_Round2_FC_Freeze - ChR2_m1.csv')
-# x, y, z = fc_1.process_anymaze(my_behave_file, time)
-# q, qq, qqq = fc_1.within_trial_eta('GCaMP', [124,184,244,304], 3)
-ff = fc_1.eliminate_extreme_values('GCaMP', 50, 5)
-# b_test = b_spline.bSpline(120, 3, 9)
-# maps, dicts = b_test.create_spline_map(z, len(fc_1.DF_F_Signals['GCaMP']))
-# dicts['binary_freeze'] = y
-# model = fc_1.fit_general_linear_model('GCaMP', dicts)
-# plt.plot(model.predict(sm.add_constant(sm.add_constant(pd.DataFrame(dicts)))))

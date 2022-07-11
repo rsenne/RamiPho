@@ -1,2 +1,2 @@
-from FiberPhotometry import *
-from b_spline import *
+from FiberPho.FiberPhotometry import *
+from FiberPho.b_spline import *
