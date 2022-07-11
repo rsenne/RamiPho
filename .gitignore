@@ -142,3 +142,4 @@ FiberPho/Test_Photometry.py
 .idea/modules.xml
 *.iml
 FiberPho/analysis_script.ipynb
+analysis_script.ipynb

@@ -48,7 +48,7 @@ class fiberPhotometryCurve:
             self.fp_df = self.fp_df[int(manual_off_set // self._sample_time_):].reset_index()
 
         if keystroke_offset:
-            ind = self.fp_df[self.fp_df['Timestamp'] == keystroke_offset]
+            ind = self.fp_df[self.fp_df['Timestamp'] == keystroke_offset].index[0]
             self.fp_df = self.fp_df[ind:].reset_index()
 
         # check to see if using old files
@@ -147,7 +147,7 @@ class fiberPhotometryCurve:
             raise ValueError(
                 "No experiment type matches your NPM File input. Make sure you've loaded the correct file.")
 
-        self.DF_F_Signals = self.process_data()
+        self.DF_F_Signals, self.DF_Z_Signals = self.process_data()
         self.peak_properties = self.find_signal()
         self.neg_peak_properties = self.find_signal(neg=True)
 
@@ -226,14 +226,18 @@ class fiberPhotometryCurve:
     def process_data(self):
         signals = [signal for signal in self.Signal.values()]
         baseline_corr_signal = [self._als_detrend(sig) for sig in signals]
-        df_f_signals = [self._df_f(s) for s in baseline_corr_signal]
+        df_f_signals = [self._df_f(s, kind='standard') for s in baseline_corr_signal]
+        df_z_signals = [self._df_f(s, kind='std') for s in baseline_corr_signal]
         for i in range(len(df_f_signals)):
             if abs(np.median(df_f_signals[i])) < 0.05:
                 df_f_signals[i] = self._als_detrend(df_f_signals[i])
+                df_z_signals[i] = self._als_detrend(df_z_signals[i])
         # smoothed like a baby's bottom
-        smoothed_signals = [self.smooth(timeseries, kernel=10) for timeseries in
+        smoothed_f_signals = [self.smooth(timeseries, kernel=10) for timeseries in
                             df_f_signals]
-        return {identity: signal for identity, signal in zip(self.Signal.keys(), smoothed_signals)}
+        smoothed_z_signals = [self.smooth(timeseries, kernel=10) for timeseries in
+                              df_z_signals]
+        return {identity: signal for identity, signal in zip(self.Signal.keys(), smoothed_f_signals)}, {identity: signal for identity, signal in zip(self.Signal.keys(), smoothed_z_signals)}
 
     def fit_general_linear_model(self, curve, ind_vars):
         dep_var = np.reshape(self.DF_F_Signals[curve], (len(self.DF_F_Signals[curve]), 1))
@@ -533,6 +537,10 @@ class fiberPhotometryExperiment:
             [len(x) for x in [t.Timestamps[curve].tolist() for t in next(iter(getattr(self, group).values()))]])
         time_array = np.array(
             [time.Timestamps[curve][0:max_ind].tolist() for time in next(iter(getattr(self, group).values()))])
+        # we make an assumption here that all animals were recorded at same fps, ergo, the sample_time should be the
+        # same for all animals
+        sample_time = np.diff(time_array[0])[1]
+        ind_plus = window/sample_time
         vector_array = np.array(
             [trace.DF_F_Signals[curve][0:max_ind].tolist() for trace in next(iter(getattr(self, group).values()))])
         inds = []
@@ -544,11 +552,19 @@ class fiberPhotometryExperiment:
             inds = event_times
         mt_eta = []
         for animal in range(len(vector_array)):
-            part_traces = [[vector_array[animal][indice - (int( window/ 2)):indice + window].tolist() for indice in inds[animal]]]
+            if len(event_times) != 1:
+                part_traces = np.array(
+                    [vector_array[animal][indice - (int(ind_plus / 2)):int(indice + ind_plus)].tolist() for indice in
+                     inds[animal]])
+            else:
+                part_traces = np.array(
+                    [vector_array[animal][indice - (int(ind_plus / 2)):int(indice + ind_plus)].tolist() for indice in inds[0]])
             eta = np.average(part_traces, axis=0)
             mt_eta.append(eta)
         av_tr = np.average(mt_eta, axis=0)
-        return av_tr
+        ci = 1.96 * np.std(mt_eta, axis=0) / np.sqrt(np.shape(mt_eta)[0])
+        time_int = np.linspace(-window/2, window, len(av_tr))
+        return av_tr, mt_eta, time_int, ci
 
     # test this function
     def bootstrap(self, inds, average_trace, window, niter):
@@ -561,16 +577,25 @@ class fiberPhotometryExperiment:
             avg_max.append(max_average)
         return avg_max, actual_values
 
-    def plot_eta(self, curve, event_time, window, *args):
+    def plot_st_eta(self, curve, event_time, window, *args):
         for arg in args:
             av_tr, av_ti, ci = self.st_event_triggered_average(curve, event_time, window, arg)
             ti_ind = np.argmin(np.abs(av_ti - event_time))
             plt.axvline(av_ti[ti_ind], linestyle='--', color='black')
             plt.plot(av_ti, av_tr)
             plt.fill_between(av_ti, (av_tr - ci), (av_tr + ci), alpha=0.1)
-        plt.show()
+            plt.show()
         return
 
+    def plot_mt_eta(self, curve, event_times, window, *args):
+        for arg in args:
+            av_tr, mt_eta, av_ti, ci = self.mt_event_triggered_average(curve, event_times, window, arg)
+            plt.axvline(0, linestyle='--', color='black')
+            plt.plot(av_ti, av_tr)
+            plt.fill_between(av_ti, (av_tr - ci), (av_tr + ci), alpha=0.1)
+        plt.xlabel('Time (s)')
+        plt.ylabel(r'$\frac{dF}{F}$ (%)')
+        return
 
 def make_3d_timeseries(timeseries, timestamps, x_axis, y_axis, z_axis, **kwargs):
     sb.set()
