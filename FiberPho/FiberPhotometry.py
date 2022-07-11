@@ -339,6 +339,8 @@ class fiberPhotometryCurve:
 
         #creates distance column,  sets distance  at  time 0  to 0
         df.at[0, 'distance'] = 0
+        df.at[0, 'velocity'] = 0
+        df.at[0, 'acceleration'] = 0
 
         # interpolates for 100 frames
         if interpolate:
@@ -393,14 +395,17 @@ class fiberPhotometryCurve:
                 [df.at[i, f"{b_part}" + "_x"] for b_part in bps if df.at[i, f"{b_part}" + "_likelihood"] > threshold])
             df.at[i, 'centroid_y'] = np.average(
                 [df.at[i, f"{b_part}" + "_y"] for b_part in bps if df.at[i, f"{b_part}" + "_likelihood"] > threshold])
+            #calculates distance traveled from  last frame
             if (i > 0):
                 df.at[i, 'distance'] = np.sqrt((df.at[i - 1, 'centroid_x'] - df.at[i, 'centroid_x']) ** 2 + (
                         df.at[i - 1, 'centroid_y'] - df.at[i, 'centroid_y']) ** 2)
+                df.at[i, 'velocity'] = df.at[i, 'distance'] / (1 / 29)
+                df.at[i, 'acceleration'] = ((df.at[i, 'velocity']) - (df.at[i - 1, 'velocity'])) / (1 / 29)
 
-        
+        #returns data  frame  with added  centroid  (x/y) columns, distance, velocity and acceleration
         return df
 
-        # calc_kinematics('/Users/michellebuzharsky/Downloads/excel_practice.csv')
+
 
     def save_fp(self, filename):
         file = open(filename, 'wb')
