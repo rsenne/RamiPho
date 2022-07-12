@@ -149,9 +149,14 @@ class fiberPhotometryCurve:
             raise ValueError(
                 "No experiment type matches your NPM File input. Make sure you've loaded the correct file.")
 
+        if behavioral_data:
+            _, self.freeze_vec, self.freeze_inds = self.process_anymaze(pd.read_csv(behavioral_data), self.Timestamps['GCaMP'])
+
         self.DF_F_Signals, self.DF_Z_Signals = self.process_data()
         self.peak_properties = self.find_signal()
         self.neg_peak_properties = self.find_signal(neg=True)
+
+
 
     def __iter__(self):
         return iter(list(self.DF_F_Signals.values()))
@@ -303,9 +308,8 @@ class fiberPhotometryCurve:
                 t2 = anymaze_file.loc[i + 1, 'seconds']
                 try:
                     binary_freeze_vec[np.where(timestamps > t1)[0][0]:np.where(timestamps < t2)[0][-1]] = 1
-                    # print(np.where(timestamps > t1)[0][0], np.where(timestamps < t2)[0][-1])
                 except IndexError:
-                    binary_freeze_vec[np.where(timestamps > t1)[0][0]:np.where(timestamps < t2)[0][-1]] = 1
+                    binary_freeze_vec[np.where(timestamps > t1 + self.OffSet)[0][0]:np.where(timestamps < t2 + self.OffSet)[0][-1]] = 1
                 i += 1
             else:
                 i += 1
@@ -620,3 +624,6 @@ def make_3d_timeseries(timeseries, timestamps, x_axis, y_axis, z_axis, **kwargs)
     axs.set_ylabel(y_axis)
     axs.set_zlabel(z_axis)
     return
+
+
+recall_c3_m3 = fiberPhotometryCurve(r"C:\Users\Ryan Senne\Documents\RLS_Team_Data\BLA_Extinction\Recall\Test_Pho_BLA_C3_Recall_Shock_M3.csv", r"C:\Users\Ryan Senne\Documents\RLS_Team_Data\BLA_Extinction\Recall\BLA_C3_Recall_M3.csv", 605.571008, None, **{'task':'recall', 'treatment':'shock'})
