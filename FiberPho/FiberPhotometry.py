@@ -46,8 +46,10 @@ class fiberPhotometryCurve:
 
         if manual_off_set:
             self.fp_df = self.fp_df[int(manual_off_set // self._sample_time_):].reset_index()
+            self.OffSet = manual_off_set
 
         if keystroke_offset:
+            self.OffSet = (keystroke_offset - self.fp_df.at[0, 'Timestamp'])
             ind = self.fp_df[self.fp_df['Timestamp'] == keystroke_offset].index[0]
             self.fp_df = self.fp_df[ind:].reset_index()
 

@@ -145,3 +145,5 @@ FiberPho/analysis_script.ipynb
 analysis_script.ipynb
 .idea/misc.xml
 .idea/RamiPho.iml
+*.xml
+*.iml
