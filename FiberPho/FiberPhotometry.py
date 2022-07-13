@@ -37,6 +37,14 @@ class fiberPhotometryCurve:
         self.fp_df = pd.read_csv(self.npm_file)
         self.__T0__ = self.fp_df['Timestamp'][1]
 
+        if keystroke_offset or manual_off_set:
+            if keystroke_offset:
+                self.OffSet = (keystroke_offset - self.fp_df.at[0, 'Timestamp'])
+            elif manual_off_set:
+                self.OffSet = manual_off_set
+            else:
+                self.OffSet = None
+
         # unpack extra params
         for key, value in kwargs.items():
             setattr(self, key, value)
@@ -44,12 +52,16 @@ class fiberPhotometryCurve:
         # determine sample time
         self._sample_time_ = np.diff(self.fp_df['Timestamp'])[1]
 
+        # this needs to be here for coherent timestamp data between behavioral analysis and signal
+        if behavioral_data:
+            self.anymaze_file, self.freeze_vec, self.freeze_inds = self.process_anymaze(pd.read_csv(behavioral_data),
+                                                                                        self.fp_df.Timestamp[self.fp_df[
+                                                                                                                 'LedState'] == 1])
+
         if manual_off_set:
             self.fp_df = self.fp_df[int(manual_off_set // self._sample_time_):].reset_index()
-            self.OffSet = manual_off_set
 
         if keystroke_offset:
-            self.OffSet = (keystroke_offset - self.fp_df.at[0, 'Timestamp'])
             ind = self.fp_df[self.fp_df['Timestamp'] == keystroke_offset].index[0]
             self.fp_df = self.fp_df[ind - 1:].reset_index()
             self.__T0__ = self.fp_df['Timestamp'][0]
@@ -150,10 +162,7 @@ class fiberPhotometryCurve:
             raise ValueError(
                 "No experiment type matches your NPM File input. Make sure you've loaded the correct file.")
 
-        if behavioral_data:
-            self.anymaze_file, self.freeze_vec, self.freeze_inds = self.process_anymaze(pd.read_csv(behavioral_data),
-                                                                                        self.Timestamps['GCaMP'])
-        self.calc_binned_freezing([0, 120, 240, 360])
+        # self.calc_binned_freezing([0, 120, 240, 360])
         self.DF_F_Signals, self.DF_Z_Signals = self.process_data()
         self.peak_properties = self.find_signal()
         self.neg_peak_properties = self.find_signal(neg=True)
@@ -295,6 +304,8 @@ class fiberPhotometryCurve:
         return
 
     def process_anymaze(self, anymaze_file, timestamps):
+        timestamps.reset_index(drop=True, inplace=True)
+        timestamps = timestamps.to_numpy() - timestamps[0]
         length = len(timestamps)
         times = anymaze_file.Time.str.split(':')
         if len(times[1]) == 3:
@@ -305,9 +316,11 @@ class fiberPhotometryCurve:
                 anymaze_file.loc[i, 'seconds'] = (float(times[i][0]) * 60 + float(times[i][1]))
         anymaze_file.seconds = anymaze_file['seconds'].apply(
             lambda x: (x / anymaze_file.seconds.iloc[-1] * timestamps[-1]))
-        binary_freeze_vec = np.zeros(shape=(length))
+        anymaze_file.seconds = anymaze_file.seconds - self.OffSet
+        anymaze_file = anymaze_file[anymaze_file['seconds'] > 0].reset_index()
+        binary_freeze_vec = np.zeros(shape=length)
         i = 0
-        while i < len(times):
+        while i < len(anymaze_file):
             if anymaze_file.loc[i, 'Freezing'] == 1:
                 t1 = anymaze_file.loc[i, 'seconds']
                 t2 = anymaze_file.loc[i + 1, 'seconds']
@@ -315,7 +328,7 @@ class fiberPhotometryCurve:
                     binary_freeze_vec[np.where(timestamps > t1)[0][0]:np.where(timestamps < t2)[0][-1]] = 1
                 except IndexError:
                     binary_freeze_vec[
-                    np.where(timestamps > t1 + self.OffSet)[0][0]:np.where(timestamps < t2 + self.OffSet)[0][-1]] = 1
+                    np.where(timestamps > t1)[0][0]:np.where(timestamps < t2)[0][-1]] = 1
                 i += 1
             else:
                 i += 1
@@ -341,17 +354,27 @@ class fiberPhotometryCurve:
             if even:
                 time_freezing = np.sum([x for x in np.diff(df['seconds'])[1::2]])
                 if df.Freezing.iloc[-1] == 1:
-                    time_freezing += df.at[0, 'bin'].right - df.seconds.iloc[-1]
-                    freeze_time.append(time_freezing)
+                    delta_t_e = df.at[0, 'bin'].right - df.seconds.iloc[-1]
                 else:
-                    freeze_time.append(time_freezing)
+                    delta_t_e = 0
+                if df.Freezing.iloc[0] == 0:
+                    delta_t_b = df.seconds.iloc[0] - df.at[0, 'bin'].left
+                else:
+                    delta_t_b = 0
+                time_freezing += delta_t_e + delta_t_b
+                freeze_time.append(time_freezing)
             else:
                 time_freezing = np.sum([x for x in np.diff(df['seconds'])[0::2]])
                 if df.Freezing.iloc[-1] == 1:
-                    time_freezing += df.at[0, 'bin'].right - df.seconds.iloc[-1]
-                    freeze_time.append(time_freezing)
+                    delta_t_e = df.at[0, 'bin'].right - df.seconds.iloc[-1]
                 else:
-                    freeze_time.append(time_freezing)
+                    delta_t_e = 0
+                if df.Freezing.iloc[0] == 0:
+                    delta_t_b = df.seconds.iloc[0] - df.at[0, 'bin'].left
+                else:
+                    delta_t_b = 0
+                time_freezing += delta_t_e + delta_t_b
+                freeze_time.append(time_freezing)
         return freeze_time / bin_time
 
     def save_fp(self, filename):
