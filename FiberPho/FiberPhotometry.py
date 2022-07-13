@@ -51,7 +51,8 @@ class fiberPhotometryCurve:
         if keystroke_offset:
             self.OffSet = (keystroke_offset - self.fp_df.at[0, 'Timestamp'])
             ind = self.fp_df[self.fp_df['Timestamp'] == keystroke_offset].index[0]
-            self.fp_df = self.fp_df[ind:].reset_index()
+            self.fp_df = self.fp_df[ind - 1:].reset_index()
+            self.__T0__ = self.fp_df['Timestamp'][0]
 
         # check to see if using old files
         if "Flags" in self.fp_df.columns:
@@ -150,13 +151,12 @@ class fiberPhotometryCurve:
                 "No experiment type matches your NPM File input. Make sure you've loaded the correct file.")
 
         if behavioral_data:
-            _, self.freeze_vec, self.freeze_inds = self.process_anymaze(pd.read_csv(behavioral_data), self.Timestamps['GCaMP'])
-
+            self.anymaze_file, self.freeze_vec, self.freeze_inds = self.process_anymaze(pd.read_csv(behavioral_data),
+                                                                                        self.Timestamps['GCaMP'])
+        self.calc_binned_freezing([0, 120, 240, 360])
         self.DF_F_Signals, self.DF_Z_Signals = self.process_data()
         self.peak_properties = self.find_signal()
         self.neg_peak_properties = self.find_signal(neg=True)
-
-
 
     def __iter__(self):
         return iter(list(self.DF_F_Signals.values()))
@@ -241,10 +241,15 @@ class fiberPhotometryCurve:
                 df_z_signals[i] = self._als_detrend(df_z_signals[i])
         # smoothed like a baby's bottom
         smoothed_f_signals = [self.smooth(timeseries, kernel=10) for timeseries in
-                            df_f_signals]
+                              df_f_signals]
         smoothed_z_signals = [self.smooth(timeseries, kernel=10) for timeseries in
                               df_z_signals]
-        return {identity: signal for identity, signal in zip(self.Signal.keys(), smoothed_f_signals)}, {identity: signal for identity, signal in zip(self.Signal.keys(), smoothed_z_signals)}
+        return {identity: signal for identity, signal in zip(self.Signal.keys(), smoothed_f_signals)}, {identity: signal
+                                                                                                        for
+                                                                                                        identity, signal
+                                                                                                        in
+                                                                                                        zip(self.Signal.keys(),
+                                                                                                            smoothed_z_signals)}
 
     def fit_general_linear_model(self, curve, ind_vars):
         dep_var = np.reshape(self.DF_F_Signals[curve], (len(self.DF_F_Signals[curve]), 1))
@@ -309,13 +314,45 @@ class fiberPhotometryCurve:
                 try:
                     binary_freeze_vec[np.where(timestamps > t1)[0][0]:np.where(timestamps < t2)[0][-1]] = 1
                 except IndexError:
-                    binary_freeze_vec[np.where(timestamps > t1 + self.OffSet)[0][0]:np.where(timestamps < t2 + self.OffSet)[0][-1]] = 1
+                    binary_freeze_vec[
+                    np.where(timestamps > t1 + self.OffSet)[0][0]:np.where(timestamps < t2 + self.OffSet)[0][-1]] = 1
                 i += 1
             else:
                 i += 1
         time_val_0 = [anymaze_file.seconds[i] for i in range(1, len(anymaze_file)) if anymaze_file.Freezing[i] == 0]
         inds = [np.argmin(np.abs(timestamps - time_val)) for time_val in time_val_0]
         return anymaze_file, binary_freeze_vec, inds
+
+    def calc_binned_freezing(self, bins):
+        bin_time = np.diff(bins)[0]
+        if hasattr(self, 'OffSet'):
+            bins += self.OffSet
+        per_freezing = pd.DataFrame()
+        self.anymaze_file['bin'] = pd.cut(self.anymaze_file.seconds, bins, include_lowest=True)
+        self.anymaze_file = self.anymaze_file.dropna()
+        unique_bins = self.anymaze_file.bin.unique()
+        freeze_time = []
+        for bin in unique_bins:
+            df = self.anymaze_file[self.anymaze_file['bin'] == bin].reset_index()
+            if df.at[0, 'Freezing'] == 0:
+                even = True
+            else:
+                even = False
+            if even:
+                time_freezing = np.sum([x for x in np.diff(df['seconds'])[1::2]])
+                if df.Freezing.iloc[-1] == 1:
+                    time_freezing += df.at[0, 'bin'].right - df.seconds.iloc[-1]
+                    freeze_time.append(time_freezing)
+                else:
+                    freeze_time.append(time_freezing)
+            else:
+                time_freezing = np.sum([x for x in np.diff(df['seconds'])[0::2]])
+                if df.Freezing.iloc[-1] == 1:
+                    time_freezing += df.at[0, 'bin'].right - df.seconds.iloc[-1]
+                    freeze_time.append(time_freezing)
+                else:
+                    freeze_time.append(time_freezing)
+        return freeze_time / bin_time
 
     def save_fp(self, filename):
         file = open(filename, 'wb')
@@ -546,7 +583,7 @@ class fiberPhotometryExperiment:
         # we make an assumption here that all animals were recorded at same fps, ergo, the sample_time should be the
         # same for all animals
         sample_time = np.diff(time_array[0])[1]
-        ind_plus = window/sample_time
+        ind_plus = window / sample_time
         vector_array = np.array(
             [trace.DF_F_Signals[curve][0:max_ind].tolist() for trace in next(iter(getattr(self, group).values()))])
         inds = []
@@ -564,12 +601,13 @@ class fiberPhotometryExperiment:
                      inds[animal]])
             else:
                 part_traces = np.array(
-                    [vector_array[animal][indice - (int(ind_plus / 2)):int(indice + ind_plus)].tolist() for indice in inds[0]])
+                    [vector_array[animal][indice - (int(ind_plus / 2)):int(indice + ind_plus)].tolist() for indice in
+                     inds[0]])
             eta = np.average(part_traces, axis=0)
             mt_eta.append(eta)
         av_tr = np.average(mt_eta, axis=0)
         ci = 1.96 * np.std(mt_eta, axis=0) / np.sqrt(np.shape(mt_eta)[0])
-        time_int = np.linspace(-window/2, window, len(av_tr))
+        time_int = np.linspace(-window / 2, window, len(av_tr))
         return av_tr, mt_eta, time_int, ci
 
     # test this function
@@ -603,6 +641,7 @@ class fiberPhotometryExperiment:
         plt.ylabel(r'$\frac{dF}{F}$ (%)')
         return
 
+
 def make_3d_timeseries(timeseries, timestamps, x_axis, y_axis, z_axis, **kwargs):
     sb.set()
     if type(timeseries) != np.array:
@@ -626,4 +665,8 @@ def make_3d_timeseries(timeseries, timestamps, x_axis, y_axis, z_axis, **kwargs)
     return
 
 
-recall_c3_m3 = fiberPhotometryCurve(r"C:\Users\Ryan Senne\Documents\RLS_Team_Data\BLA_Extinction\Recall\Test_Pho_BLA_C3_Recall_Shock_M3.csv", r"C:\Users\Ryan Senne\Documents\RLS_Team_Data\BLA_Extinction\Recall\BLA_C3_Recall_M3.csv", 605.571008, None, **{'task':'recall', 'treatment':'shock'})
+recall_c3_m3 = fiberPhotometryCurve(
+    r"C:\Users\Ryan Senne\Documents\RLS_Team_Data\BLA_Extinction\Recall\Test_Pho_BLA_C3_Recall_Shock_M3.csv",
+    r"C:\Users\Ryan Senne\Documents\RLS_Team_Data\BLA_Extinction\Recall\BLA_C3_Recall_M3.csv", 605.571008, None,
+    **{'task': 'recall', 'treatment': 'shock'})
+z = recall_c3_m3.calc_binned_freezing([0, 120, 240, 360])
