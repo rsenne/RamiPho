@@ -40,10 +40,10 @@ class fiberPhotometryCurve:
         if keystroke_offset or manual_off_set:
             if keystroke_offset:
                 self.OffSet = (keystroke_offset - self.fp_df.at[0, 'Timestamp'])
-            elif manual_off_set:
-                self.OffSet = manual_off_set
             else:
-                self.OffSet = None
+                self.OffSet = manual_off_set
+        else:
+            self.OffSet = 0.0
 
         # unpack extra params
         for key, value in kwargs.items():
@@ -162,7 +162,6 @@ class fiberPhotometryCurve:
             raise ValueError(
                 "No experiment type matches your NPM File input. Make sure you've loaded the correct file.")
 
-        # self.calc_binned_freezing([0, 120, 240, 360])
         self.DF_F_Signals, self.DF_Z_Signals = self.process_data()
         self.peak_properties = self.find_signal()
         self.neg_peak_properties = self.find_signal(neg=True)
@@ -308,7 +307,7 @@ class fiberPhotometryCurve:
         timestamps = timestamps.to_numpy() - timestamps[0]
         length = len(timestamps)
         times = anymaze_file.Time.str.split(':')
-        if len(times[1]) == 3:
+        if len(times[0]) == 3:
             for i in range(len(times)):
                 anymaze_file.loc[i, 'seconds'] = (float(times[i][1]) * 60 + float(times[i][2]))
         else:
@@ -323,12 +322,17 @@ class fiberPhotometryCurve:
         while i < len(anymaze_file):
             if anymaze_file.loc[i, 'Freezing'] == 1:
                 t1 = anymaze_file.loc[i, 'seconds']
-                t2 = anymaze_file.loc[i + 1, 'seconds']
+                try:
+                    t2 = anymaze_file.loc[i + 1, 'seconds']
+                except KeyError:
+                    t2 = anymaze_file.seconds.iloc[-1]
                 try:
                     binary_freeze_vec[np.where(timestamps > t1)[0][0]:np.where(timestamps < t2)[0][-1]] = 1
                 except IndexError:
-                    binary_freeze_vec[
-                    np.where(timestamps > t1)[0][0]:np.where(timestamps < t2)[0][-1]] = 1
+                    if t1 == t2:
+                        binary_freeze_vec[np.where(timestamps == t1)] = 0
+                    else:
+                        binary_freeze_vec[np.where(timestamps > t1)[0][0]:np.where(timestamps < t2)[0][-1]] = 1
                 i += 1
             else:
                 i += 1
@@ -339,43 +343,55 @@ class fiberPhotometryCurve:
     def calc_binned_freezing(self, bins):
         bin_time = np.diff(bins)[0]
         if hasattr(self, 'OffSet'):
-            bins += self.OffSet
+            bins = [x + self.OffSet for x in bins]
         per_freezing = pd.DataFrame()
         self.anymaze_file['bin'] = pd.cut(self.anymaze_file.seconds, bins, include_lowest=True)
         self.anymaze_file = self.anymaze_file.dropna()
         unique_bins = self.anymaze_file.bin.unique()
-        freeze_time = []
+
+        freeze_time = np.zeros(shape=(len(bins) - 1,))
+        if len(unique_bins) < len(bins) - 1:
+            i = len(bins) - 1 - len(unique_bins)
+        else:
+            i = 0
         for bin in unique_bins:
-            df = self.anymaze_file[self.anymaze_file['bin'] == bin].reset_index()
-            if df.at[0, 'Freezing'] == 0:
-                even = True
+            if i > len(bins) - 2:
+                freeze_time = np.zeros(shape=(len(bins) - 1,))
             else:
-                even = False
-            if even:
-                time_freezing = np.sum([x for x in np.diff(df['seconds'])[1::2]])
-                if df.Freezing.iloc[-1] == 1:
-                    delta_t_e = df.at[0, 'bin'].right - df.seconds.iloc[-1]
+                # print(i)
+                df = self.anymaze_file[self.anymaze_file['bin'] == bin].reset_index()
+                if df.at[0, 'Freezing'] == 0:
+                    even = True
                 else:
-                    delta_t_e = 0
-                if df.Freezing.iloc[0] == 0:
-                    delta_t_b = df.seconds.iloc[0] - df.at[0, 'bin'].left
+                    even = False
+                if even:
+                    time_freezing = np.sum([x for x in np.diff(df['seconds'])[1::2]])
+                    if df.Freezing.iloc[-1] == 1:
+                        delta_t_e = df.at[0, 'bin'].right - df.seconds.iloc[-1]
+                    else:
+                        delta_t_e = 0
+                    if df.Freezing.iloc[0] == 0:
+                        delta_t_b = df.seconds.iloc[0] - df.at[0, 'bin'].left
+                    else:
+                        delta_t_b = 0
+                    time_freezing += delta_t_e + delta_t_b
+                    freeze_time[i] = time_freezing
+                    i += 1
                 else:
-                    delta_t_b = 0
-                time_freezing += delta_t_e + delta_t_b
-                freeze_time.append(time_freezing)
-            else:
-                time_freezing = np.sum([x for x in np.diff(df['seconds'])[0::2]])
-                if df.Freezing.iloc[-1] == 1:
-                    delta_t_e = df.at[0, 'bin'].right - df.seconds.iloc[-1]
-                else:
-                    delta_t_e = 0
-                if df.Freezing.iloc[0] == 0:
-                    delta_t_b = df.seconds.iloc[0] - df.at[0, 'bin'].left
-                else:
-                    delta_t_b = 0
-                time_freezing += delta_t_e + delta_t_b
-                freeze_time.append(time_freezing)
-        return freeze_time / bin_time
+                    time_freezing = np.sum([x for x in np.diff(df['seconds'])[0::2]])
+                    if df.Freezing.iloc[-1] == 1:
+                        delta_t_e = df.at[0, 'bin'].right - df.seconds.iloc[-1]
+                    else:
+                        delta_t_e = 0
+                    if df.Freezing.iloc[0] == 0:
+                        delta_t_b = df.seconds.iloc[0] - df.at[0, 'bin'].left
+                    else:
+                        delta_t_b = 0
+                    time_freezing += delta_t_e + delta_t_b
+                    freeze_time[i] = time_freezing
+                    i += 1
+        setattr(self, 'binned_freezing', freeze_time / bin_time)
+        return
 
     def save_fp(self, filename):
         file = open(filename, 'wb')
@@ -655,14 +671,33 @@ class fiberPhotometryExperiment:
         return
 
     def plot_mt_eta(self, curve, event_times, window, *args):
-        for arg in args:
-            av_tr, mt_eta, av_ti, ci = self.mt_event_triggered_average(curve, event_times, window, arg)
-            plt.axvline(0, linestyle='--', color='black')
-            plt.plot(av_ti, av_tr)
-            plt.fill_between(av_ti, (av_tr - ci), (av_tr + ci), alpha=0.1)
+        fig, ax = plt.subplots()
+        for i in range(len(args)):
+            av_tr, mt_eta, av_ti, ci = self.mt_event_triggered_average(curve, event_times, window, args[i])
+            ax.axvline(0, linestyle='--', color='black')
+            ax.plot(av_ti, av_tr)
+            ax.fill_between(av_ti, (av_tr - ci), (av_tr + ci), alpha=0.1)
+            ax.spines['top'].set_visible(False)
+            ax.spines['right'].set_visible(False)
         plt.xlabel('Time (s)')
         plt.ylabel(r'$\frac{dF}{F}$ (%)')
         return
+
+    def percent_freezing(self, bins, g1, g2):
+        freeze_df = pd.DataFrame(columns=['Animal', 'Group'])
+        for g in (g1, g2):
+            i = 0
+            for animal in list(getattr(self, g).values())[0]:
+                animal.calc_binned_freezing(bins)
+                if hasattr(animal, 'ID'):
+                    freeze_df.loc[i, 'Animal'] = animal.ID
+                freeze_df.loc[i, 'Group'] = g
+                j = 0
+                for b in animal.binned_freezing:
+                    freeze_df.loc[i, 'bin' + str(j)] = b
+                    j += 1
+                i += 1
+        return freeze_df
 
 
 def make_3d_timeseries(timeseries, timestamps, x_axis, y_axis, z_axis, **kwargs):
@@ -686,10 +721,3 @@ def make_3d_timeseries(timeseries, timestamps, x_axis, y_axis, z_axis, **kwargs)
     axs.set_ylabel(y_axis)
     axs.set_zlabel(z_axis)
     return
-
-
-recall_c3_m3 = fiberPhotometryCurve(
-    r"C:\Users\Ryan Senne\Documents\RLS_Team_Data\BLA_Extinction\Recall\Test_Pho_BLA_C3_Recall_Shock_M3.csv",
-    r"C:\Users\Ryan Senne\Documents\RLS_Team_Data\BLA_Extinction\Recall\BLA_C3_Recall_M3.csv", 605.571008, None,
-    **{'task': 'recall', 'treatment': 'shock'})
-z = recall_c3_m3.calc_binned_freezing([0, 120, 240, 360])
