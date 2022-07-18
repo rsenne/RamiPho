@@ -150,6 +150,18 @@ class fiberPhotometryCurve:
         self.peak_properties = self.find_signal()
         self.neg_peak_properties = self.find_signal(neg=True)
 
+        # mb trying to do behavioral dict of dicts
+        # if there's a DLC file, apply calc kinematics on that file and then put the velocity and accel column as keys
+        self.behavioral_data = {} #behavioral data dictionary
+        if hasattr(self, 'DLC_file'): #if there's a DLC file key word arg
+            self.behavioral_data['DLC'] = {} #creates nested dictionary within behavioral data dictionary
+            #passes csv DLC file through calc_kinematics function, stores it in pandas df
+            df = self.calc_kinematics(getattr(self, 'DLC_file'))
+            #creates a numpy array as a value for the velocity and acceleration, taken from velocity and acceleration columns of df
+            self.behavioral_data['DLC']['velocity'] = df['velocity'].to_numpy()
+            self.behavioral_data['DLC']['acceleration'] = df['acceleration'].to_numpy()
+
+
     def __iter__(self):
         return iter(list(self.DF_F_Signals.values()))
 
@@ -308,25 +320,25 @@ class fiberPhotometryCurve:
         inds = [np.argmin(np.abs(timestamps - time_val)) for time_val in time_val_0]
         return anymaze_file, binary_freeze_vec, inds
 
-    def calc_kinematics(self, DLC_file, bps=None, interpolate=False, int_f = 0, threshold = .6):
+    def calc_kinematics(self, DLC_file, bps=None, interpolate=False, int_f=100, threshold=.6):
 
         """
 
         :param DLC_file: DLC-processed csv file
         :param bps: array of labeled body parts
         :param interpolate: boolean expression, interpolates x and y coordinates for a variable number of frames whose probabilities are less than threshold amount
-        :param int_f: variable for maximum number of frames to  interpolate
+        :param int_f: variable for maximum number of frames to  interpolate, default is 100 if interpolate is true
         :param threshold: variable for minimum probability to threshold,  values higher  than threshold  will be kept, interpolated frames  will be set to threshold + .001
         :return: data frame  with interpolated  x and  y coordinates and probabilities, x and y centroid columns, distance, velocity, and acceleration
         Function to calculate kinematics i.e. distance, velocity, acceleration
         """
 
-        #default  body part  array
+        # default  body part  array
         if bps is None:
             bps = ['snout', 'l_ear', 'r_ear', 'front_l_paw', 'front_r_paw', 'back_l_paw', 'back_r_paw',
                    'base_of_tail']
 
-        #cleans up csv file
+        # cleans up csv file
         df = pd.read_csv(DLC_file, header=[1, 2])
         df = df.dropna(how='all')
         df = df.dropna(1)
@@ -337,7 +349,7 @@ class fiberPhotometryCurve:
         # creates seconds column
         df.rename(columns={'bodyparts_coords': 'seconds'}, inplace=True)
 
-        #sets distance, velocity, and acceleration column   time 0  to 0
+        # sets distance, velocity, and acceleration column   time 0  to 0
         df.at[0, 'distance'] = 0
         df.at[0, 'velocity'] = 0
         df.at[0, 'acceleration'] = 0
@@ -362,13 +374,15 @@ class fiberPhotometryCurve:
                         # is going to move onto the next row
                         while (num <= int_f):
                             f = num + row  # row value is still og, num is how many frames it moves, so f is current row to check
-                            if (num > int_f) or (f > len(df) - 1):  # if pass int_f frames, give up updating for this cycle, update row, and then reset everything, or if get to end of dataframe
+                            if (num > int_f) or (f > len(
+                                    df) - 1):  # if pass int_f frames, give up updating for this cycle, update row, and then reset everything, or if get to end of dataframe
                                 row += num
                                 num = 0
                                 og_y = 0
                                 og_x = 0
                                 break
-                            elif (df.at[f, bp + '_likelihood'] > threshold):  # next value is greater  than threshold, will be final value, need another loop to reupdate
+                            elif (df.at[
+                                      f, bp + '_likelihood'] > threshold):  # next value is greater  than threshold, will be final value, need another loop to reupdate
                                 final_x = df.at[f, bp + '_x']
                                 final_y = df.at[f, bp + '_y']
                                 update_x = (final_x - og_x) / (num + 1)  # number to increment x by
@@ -377,7 +391,7 @@ class fiberPhotometryCurve:
                                 for ind in range(row, f):  # number to multiply update_val by
                                     df.at[ind, bp + '_x'] = og_x + update_x * n
                                     df.at[ind, bp + '_y'] = og_y + update_y * n
-                                    df.at[ind, bp + '_likelihood'] = threshold +  .001
+                                    df.at[ind, bp + '_likelihood'] = threshold + .001
                                     n += 1
                                 row += num
                                 num = 0
@@ -395,16 +409,14 @@ class fiberPhotometryCurve:
                 [df.at[i, f"{b_part}" + "_x"] for b_part in bps if df.at[i, f"{b_part}" + "_likelihood"] > threshold])
             df.at[i, 'centroid_y'] = np.average(
                 [df.at[i, f"{b_part}" + "_y"] for b_part in bps if df.at[i, f"{b_part}" + "_likelihood"] > threshold])
-            #calculates distance traveled from  last frame, velocity, and acceleration
+            # calculates distance traveled from  last frame, velocity, and acceleration
             if (i > 0):
                 df.at[i, 'distance'] = np.sqrt((df.at[i - 1, 'centroid_x'] - df.at[i, 'centroid_x']) ** 2 + (
                         df.at[i - 1, 'centroid_y'] - df.at[i, 'centroid_y']) ** 2)
                 df.at[i, 'velocity'] = df.at[i, 'distance'] / (1 / 29)
                 df.at[i, 'acceleration'] = ((df.at[i, 'velocity']) - (df.at[i - 1, 'velocity'])) / (1 / 29)
-        #returns data  frame  with added  centroid  (x/y) columns, distance, velocity and acceleration
+        # returns data  frame  with added  centroid  (x/y) columns, distance, velocity and acceleration
         return df
-
-
 
     def save_fp(self, filename):
         file = open(filename, 'wb')
@@ -444,6 +456,7 @@ class fiberPhotometryExperiment:
         self.treatment = {}
         self.task = {}
         self.curves = [arg for arg in args]
+        self.dlc = {}  # csv
 
         for arg in args:
             if hasattr(arg, 'treatment'):
@@ -465,6 +478,10 @@ class fiberPhotometryExperiment:
                     self.__add_to_attribute_dict__('task', arg, arg.task)
                 else:
                     print('No task supplied, assuming all animals are in the same group.')
+
+
+
+
 
         self.__set_permutation_dicts__('task', 'treatment')
         for GECI in self.curves[1].DF_F_Signals.keys():
@@ -660,6 +677,8 @@ if __name__ == '__main__':
     """
     for when i do stuff on linux
     """
+
+
     fc_1 = fiberPhotometryCurve('/Users/ryansenne/Desktop/Rebecca_Data/Test_Pho_engram_ChR2_m1_FC.csv', None, None,
                                 None,
                                 **{'treatment': 'ChR2', 'task': 'FC'})
@@ -678,6 +697,15 @@ if __name__ == '__main__':
     # fc_8 = fiberPhotometryCurve('/home/ryansenne/Data/Rebecca/Test_Pho_engram_eYFP_m4_FC.csv', None,
     #                             **{'treatment': 'eYFP', 'task': 'FC'})
     #
+
+    #michelleb does stuff practice
+    """fc_prac = fiberPhotometryCurve('/Users/michellebuzharsky/Downloads/Test_Pho_engram_ChR2_m1_FC.csv', None, None,
+                                None,
+                                **{'treatment': 'ChR2', 'task': 'FC', 'DLC_file': '/Users/michellebuzharsky/Downloads/recallnoshock.csv'})
+    print("here")
+    print(fc_prac.behavioral_data['DLC'])"""
+
+
     # fc_experiment = fiberPhotometryExperiment(fc_1, fc_2, fc_3, fc_4, fc_5, fc_6, fc_7, fc_8)
 
     # z, z1, z2 = fc_experiment.event_triggered_average('GCaMP', 124, 10, 'FC-ChR2')
@@ -688,6 +716,6 @@ if __name__ == '__main__':
     # model = fc_1.fit_general_linear_model('GCaMP', dicts)
     # model.predict(sm.add_constant(sm.add_constant(pd.DataFrame(dicts))))
 
-time = fc_1.Timestamps['GCaMP']
-my_behave_file = pd.read_csv('/Users/ryansenne/Desktop/Rebecca_Data/Engram_Round2_FC_Freeze - ChR2_m1.csv')
-x, y, z = fc_1.process_anymaze(my_behave_file, time)
+#time = fc_1.Timestamps['GCaMP']
+#my_behave_file = pd.read_csv('/Users/ryansenne/Desktop/Rebecca_Data/Engram_Round2_FC_Freeze - ChR2_m1.csv')
+#x, y, z = fc_1.process_anymaze(my_behave_file, time)
