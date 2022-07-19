@@ -167,7 +167,7 @@ class fiberPhotometryCurve:
             anymaze_df, freeze_vector, inds =  self.process_anymaze(df, self.Timestamps['GCaMP'])
             #puts freeze vector array and inds from the process anymaze function into the Anymaze dictionary
             self.behavioral_data['Anymaze']['freeze_vector'] = freeze_vector
-            self.behavioral_data['Anymaze']['inds'] = inds
+            self.behavioral_data['Anymaze']['end_freezing'] = inds #ends of freezing  bouts
 
 
     def __iter__(self):
@@ -332,10 +332,10 @@ class fiberPhotometryCurve:
             else:
                 i += 1
         time_val_0 = [anymaze_file.seconds[i] for i in range(1, len(anymaze_file)) if anymaze_file.Freezing[i] == 0]
-        inds = [np.argmin(np.abs(timestamps - time_val)) for time_val in time_val_0]
+        inds = [np.argmin(np.abs(timestamps - time_val)) for time_val in time_val_0] #vector of end of freezing bouts
         return anymaze_file, binary_freeze_vec, inds
 
-    def calc_kinematics(self, DLC_file, bps=None, interpolate=False, int_f=100, threshold=.6):
+    def calc_kinematics(self, DLC_file, bps=None, interpolate=True, int_f=100, threshold=.6):
 
         """
 
