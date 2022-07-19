@@ -632,13 +632,12 @@ class fiberPhotometryExperiment:
                 inds.append(tps)
         else:
             inds = event_times
-        for i in range(len(inds)):
-            inds[i] = [j for j in inds[i] if j < np.shape(vector_array)[1] - 1]
         mt_eta = []
-        for animal in range(np.shape(vector_array)[0]-1):
+        for animal in range(np.shape(vector_array)[0]):
             if len(event_times) != 1:
+                trace_len = int(ind_plus) + int(ind_plus/2)
                 part_traces = [vector_array[animal][indice - (int(ind_plus / 2)):int(indice + ind_plus)].tolist() for indice in inds[animal]]
-                part_traces = [trace for trace in part_traces if len(trace) == 139]
+                part_traces = [trace for trace in part_traces if len(trace) == trace_len]
             else:
                 part_traces = np.array(
                     [vector_array[animal][indice - (int(ind_plus / 2)):int(indice + ind_plus)].tolist() for indice in
