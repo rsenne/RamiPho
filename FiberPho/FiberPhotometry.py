@@ -163,6 +163,7 @@ class fiberPhotometryCurve:
             #creates a numpy array as a value for the velocity and acceleration, taken from velocity and acceleration columns of df
             self.behavioral_data['DLC']['velocity'] = df['velocity'].to_numpy()
             self.behavioral_data['DLC']['acceleration'] = df['acceleration'].to_numpy()
+            # add kwargs
         if hasattr(self, 'anymaze_file'):  # if there's an anymaze file key word arg
             self.behavioral_data['Anymaze'] = {}  # creates nested dictionary within behavioral data dictionary
             # passes csv DLC file through calc_kinematics function, stores it in pandas df
@@ -171,7 +172,7 @@ class fiberPhotometryCurve:
             #puts freeze vector array and inds from the process anymaze function into the Anymaze dictionary
             self.behavioral_data['Anymaze']['freeze_vector'] = freeze_vector
             self.behavioral_data['Anymaze']['end_freezing'] = inds #ends of freezing  bouts
-
+           
 
     def __iter__(self):
         return iter(list(self.DF_F_Signals.values()))
