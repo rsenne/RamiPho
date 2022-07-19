@@ -7,7 +7,7 @@ import pandas as pd
 import scipy.stats
 import seaborn as sb
 import statsmodels.api as sm
-# import b_spline
+import FiberPho.b_spline
 from scipy import sparse
 from scipy.integrate import simpson
 from scipy.interpolate import splrep, splev
@@ -20,6 +20,7 @@ __all__ = ["fiberPhotometryCurve", "fiberPhotometryExperiment"]
 
 class fiberPhotometryCurve:
     def __init__(self, npm_file: str, behavioral_data: str = None, keystroke_offset=None, manual_off_set=None,
+                 remove_extrema=False,
                  **kwargs):
         """
         :param npm_file: str Path to csv fiber photometry file gathered using a neurophotometrics fp3002 rig and bonsai software
@@ -28,26 +29,28 @@ class fiberPhotometryCurve:
         :param manual_off_set: Value obtained from calculating offset from expected event i.e. blue light and its theoretical appearance in video
         :param kwargs: dict containing values such as "ID", "task", and/or "treatment" note: task and treatment necessary for use in fiberPhotometryExperiment
 
-
         """
 
         # these should always be present
         self.npm_file = npm_file
         self.behavioral_data = behavioral_data
+        self.fp_df = pd.read_csv(self.npm_file)
+        self.__T0__ = self.fp_df['Timestamp'][1]
+
+        # unpack extra params
         for key, value in kwargs.items():
             setattr(self, key, value)
-
-        # read the file
-        self.fp_df = pd.read_csv(self.npm_file)
 
         # determine sample time
         self._sample_time_ = np.diff(self.fp_df['Timestamp'])[1]
 
         if manual_off_set:
             self.fp_df = self.fp_df[int(manual_off_set // self._sample_time_):].reset_index()
+            self.OffSet = manual_off_set
 
         if keystroke_offset:
-            ind = self.fp_df[self.fp_df['Timestamp'] == keystroke_offset]
+            self.OffSet = (keystroke_offset - self.fp_df.at[0, 'Timestamp'])
+            ind = self.fp_df[self.fp_df['Timestamp'] == keystroke_offset].index[0]
             self.fp_df = self.fp_df[ind:].reset_index()
 
         # check to see if using old files
@@ -95,7 +98,7 @@ class fiberPhotometryCurve:
                                "RCaMP": np.array(gcamp['Region1R']),
                                "Isobestic_GCaMP": np.array(isobestic_gcamp),
                                "Isobestic_RCaMP": np.array(isobestic_rcamp)}
-                self.Timestamps = {signal: time.reset_index(drop=True).tolist() - self.fp_df['Timestamp'][1]
+                self.Timestamps = {signal: time.reset_index(drop=True).tolist() - self.__T0__
                                    for
                                    signal, time in zip(['Isobestic_GCaMP', 'Isobestic_RCaMP', 'GCaMP', 'RCaMP'],
                                                        [isobestic.Timestamp, isobestic.Timestamp, gcamp.Timestamp,
@@ -108,7 +111,7 @@ class fiberPhotometryCurve:
                                "RCaMP": np.array(gcamp['Region0R']),
                                "Isobestic_GCaMP": np.array(isobestic_gcamp),
                                "Isobestic_RCaMP": np.array(isobestic_rcamp)}
-                self.Timestamps = {signal: time.values.tolist() - self.fp_df['Timestamp'][1] for
+                self.Timestamps = {signal: time.values.tolist() - self.__T0__ for
                                    signal, time in zip(['Isobestic_GCaMP', 'Isobestic_RCaMP', 'GCaMP', 'RCaMP'],
                                                        [isobestic.Timestamp, isobestic.Timestamp, gcamp.Timestamp,
                                                         rcamp.Timestamp])}
@@ -118,7 +121,7 @@ class fiberPhotometryCurve:
 
             try:
                 gcamp = self.fp_df[self.fp_df['LedState'] == 2]
-                self.Timestamps = {signal: time.values.tolist() - self.fp_df['Timestamp'][1] for
+                self.Timestamps = {signal: time.values.tolist() - self.__T0__ for
                                    signal, time in
                                    zip(['GCaMP_Isobestic', 'GCaMP'], [isobestic.Timestamp, gcamp.Timestamp])}
 
@@ -132,7 +135,7 @@ class fiberPhotometryCurve:
 
             except KeyError:
                 rcamp = self.fp_df[self.fp_df['LedState'] == 4]
-                self.Timestamps = {signal: time.values.tolist() - self.fp_df['Timestamp'][1] for
+                self.Timestamps = {signal: time.values.tolist() - self.__T0__ for
                                    signal, time in zip(['RCaMP_Isobestic', 'RCaMP'], [isobestic, rcamp])}
 
                 if self.__CONF1:
@@ -146,7 +149,7 @@ class fiberPhotometryCurve:
             raise ValueError(
                 "No experiment type matches your NPM File input. Make sure you've loaded the correct file.")
 
-        self.DF_F_Signals = self.process_data()
+        self.DF_F_Signals, self.DF_Z_Signals = self.process_data()
         self.peak_properties = self.find_signal()
         self.neg_peak_properties = self.find_signal(neg=True)
 
@@ -251,14 +254,18 @@ class fiberPhotometryCurve:
     def process_data(self):
         signals = [signal for signal in self.Signal.values()]
         baseline_corr_signal = [self._als_detrend(sig) for sig in signals]
-        df_f_signals = [self._df_f(s) for s in baseline_corr_signal]
+        df_f_signals = [self._df_f(s, kind='standard') for s in baseline_corr_signal]
+        df_z_signals = [self._df_f(s, kind='std') for s in baseline_corr_signal]
         for i in range(len(df_f_signals)):
             if abs(np.median(df_f_signals[i])) < 0.05:
                 df_f_signals[i] = self._als_detrend(df_f_signals[i])
+                df_z_signals[i] = self._als_detrend(df_z_signals[i])
         # smoothed like a baby's bottom
-        smoothed_signals = [self.b_smooth(timeseries, self.smooth(sigs, 10)) for timeseries, sigs in
-                            zip(df_f_signals, self.Timestamps.values())]
-        return {identity: signal for identity, signal in zip(self.Signal.keys(), smoothed_signals)}
+        smoothed_f_signals = [self.smooth(timeseries, kernel=10) for timeseries in
+                            df_f_signals]
+        smoothed_z_signals = [self.smooth(timeseries, kernel=10) for timeseries in
+                              df_z_signals]
+        return {identity: signal for identity, signal in zip(self.Signal.keys(), smoothed_f_signals)}, {identity: signal for identity, signal in zip(self.Signal.keys(), smoothed_z_signals)}
 
     def fit_general_linear_model(self, curve, ind_vars):
         dep_var = np.reshape(self.DF_F_Signals[curve], (len(self.DF_F_Signals[curve]), 1))
@@ -312,8 +319,12 @@ class fiberPhotometryCurve:
         """
         length = len(timestamps)
         times = anymaze_file.Time.str.split(':')
-        for i in range(len(times)):
-            anymaze_file.loc[i, 'seconds'] = (float(times[i][1]) * 60 + float(times[i][2]))
+        if len(times[1]) == 3:
+            for i in range(len(times)):
+                anymaze_file.loc[i, 'seconds'] = (float(times[i][1]) * 60 + float(times[i][2]))
+        else:
+            for i in range(len(times)):
+                anymaze_file.loc[i, 'seconds'] = (float(times[i][0]) * 60 + float(times[i][1]))
         anymaze_file.seconds = anymaze_file['seconds'].apply(
             lambda x: (x / anymaze_file.seconds.iloc[-1] * timestamps[-1]))
         #creates freeze vector array, every second will have corresponding 0 (not freezing) or 1 (freezing)
@@ -325,7 +336,7 @@ class fiberPhotometryCurve:
                 t2 = anymaze_file.loc[i + 1, 'seconds']
                 try:
                     binary_freeze_vec[np.where(timestamps > t1)[0][0]:np.where(timestamps < t2)[0][-1]] = 1
-                    print(np.where(timestamps > t1)[0][0], np.where(timestamps < t2)[0][-1])
+                    # print(np.where(timestamps > t1)[0][0], np.where(timestamps < t2)[0][-1])
                 except IndexError:
                     binary_freeze_vec[np.where(timestamps > t1)[0][0]:np.where(timestamps < t2)[0][-1]] = 1
                 i += 1
@@ -462,8 +473,32 @@ class fiberPhotometryCurve:
             self.peak_properties[curve_type][prop] = np.delete(self.peak_properties[curve_type][prop], deletion_list)
         return
 
-    def eliminate_extreme_values(self):
-        return
+    def within_trial_eta(self, curve, event_times, window, timepoints=True):
+        ind_plus = int(window // self._sample_time_)
+        if timepoints:
+            inds = [np.argmin(np.abs(self.Timestamps[curve] - event_time)) for event_time in event_times]
+            event_times = inds
+        else:
+            inds = event_times
+        bound_cases = int(len(list(x for x in event_times if ((x + ind_plus) - (x - int(ind_plus / 2))) < len(
+            self.DF_F_Signals[curve][event_times[0] - (int(ind_plus / 2)):event_times[0] + ind_plus]))))
+        if bound_cases == 0:
+            part_traces = np.array(
+                [self.DF_F_Signals[curve][ind - (int(ind_plus / 2)):ind + ind_plus].tolist() for ind in inds])
+        else:
+            part_traces = np.array(
+                [self.DF_F_Signals[curve][ind - (int(ind_plus / 2)):ind + ind_plus].tolist() for ind in
+                 inds[:-bound_cases]])
+        eta = np.average(part_traces, axis=0)
+        ci = 1.96 * np.std(part_traces, axis=0) / np.sqrt(np.shape(part_traces)[0])
+        time_int = np.linspace(-(window / 2), window, len(
+            self.DF_F_Signals[curve][event_times[0] - (int(ind_plus / 2)):event_times[0] + ind_plus]))
+        return eta, ci, time_int
+
+    def eliminate_extreme_values(self, curve, for_i, j):
+        rolled_average = [np.average(np.diff(self.Signal[curve])[i:i + j]) for i in range(for_i)]
+        indice_extrema = np.where(np.diff(rolled_average) < 0)[0] - 1
+        return indice_extrema
 
 
 class fiberPhotometryExperiment:
@@ -600,7 +635,7 @@ class fiberPhotometryExperiment:
         plt.show()
         return
 
-    def event_triggered_average(self, curve, event_time, window, group, plot=False):
+    def st_event_triggered_average(self, curve, event_time, window, group, plot=False, timepoint=True):
         time = [time.Timestamps[curve].tolist() for time in next(iter(getattr(self, group).values()))]
         max_ind = np.min([len(x) for x in time])
         time_array = np.array(
@@ -611,7 +646,10 @@ class fiberPhotometryExperiment:
             average_time = np.zeros(shape=(1, len(time_array)))
             average_time[0] = 0
             average_time[1:] = np.average(time_array[1:], axis=0)
-        index = np.argmin(np.abs(average_time - event_time))
+        if timepoint:
+            ind = np.argmin(np.abs(average_time - event_time))
+        else:
+            ind = event_time
         index_right_bound = np.argmin(np.abs(average_time - (event_time + window)))
         index_left_bound = np.argmin(np.abs(average_time - (event_time - (window / 2))))
         vector_array = np.array([vec.DF_F_Signals[curve][index_left_bound:index_right_bound].tolist() for vec in
@@ -625,23 +663,77 @@ class fiberPhotometryExperiment:
         ci = 1.96 * np.std(vector_array, axis=0) / np.sqrt(np.shape(vector_array)[0])
         if plot:
             fig, ax = plt.subplots()
-            plt.axvline(average_time[index], linestyle='--', color='black')
+            plt.axvline(average_time[ind], linestyle='--', color='black')
             ax.plot(average_time[index_left_bound:index_right_bound], averaged_trace)
             ax.fill_between(average_time[index_left_bound: index_right_bound], (averaged_trace - ci),
                             (averaged_trace + ci), color='b', alpha=0.1)
             plt.show()
         return averaged_trace, average_time[index_left_bound:index_right_bound], ci
 
-    def plot_eta(self, curve, event_time, window, *args):
+    def mt_event_triggered_average(self, curve, event_times, window, group, plot=False, timepoint=True):
+        max_ind = np.min(
+            [len(x) for x in [t.Timestamps[curve].tolist() for t in next(iter(getattr(self, group).values()))]])
+        time_array = np.array(
+            [time.Timestamps[curve][0:max_ind].tolist() for time in next(iter(getattr(self, group).values()))])
+        # we make an assumption here that all animals were recorded at same fps, ergo, the sample_time should be the
+        # same for all animals
+        sample_time = np.diff(time_array[0])[1]
+        ind_plus = window/sample_time
+        vector_array = np.array(
+            [trace.DF_F_Signals[curve][0:max_ind].tolist() for trace in next(iter(getattr(self, group).values()))])
+        inds = []
+        if timepoint:
+            for i in range(len(event_times)):
+                tps = [np.argmin(np.abs(time_array[i] - event_times[i][j])) for j in range(len(event_times[i]))]
+                inds.append(tps)
+        else:
+            inds = event_times
+        mt_eta = []
+        for animal in range(len(vector_array)):
+            if len(event_times) != 1:
+                part_traces = np.array(
+                    [vector_array[animal][indice - (int(ind_plus / 2)):int(indice + ind_plus)].tolist() for indice in
+                     inds[animal]])
+            else:
+                part_traces = np.array(
+                    [vector_array[animal][indice - (int(ind_plus / 2)):int(indice + ind_plus)].tolist() for indice in inds[0]])
+            eta = np.average(part_traces, axis=0)
+            mt_eta.append(eta)
+        av_tr = np.average(mt_eta, axis=0)
+        ci = 1.96 * np.std(mt_eta, axis=0) / np.sqrt(np.shape(mt_eta)[0])
+        time_int = np.linspace(-window/2, window, len(av_tr))
+        return av_tr, mt_eta, time_int, ci
+
+    # test this function
+    def bootstrap(self, inds, average_trace, window, niter):
+        average_trace_copy = average_trace
+        actual_values = [max(average_trace_copy[i:i + window] for i in inds)]
+        avg_max = []
+        for i in range(niter):
+            np.random.shuffle(average_trace)
+            max_average = np.average([max(average_trace[i:i + window] for i in inds)])
+            avg_max.append(max_average)
+        return avg_max, actual_values
+
+    def plot_st_eta(self, curve, event_time, window, *args):
         for arg in args:
-            av_tr, av_ti, ci = self.event_triggered_average(curve, event_time, window, arg)
+            av_tr, av_ti, ci = self.st_event_triggered_average(curve, event_time, window, arg)
             ti_ind = np.argmin(np.abs(av_ti - event_time))
             plt.axvline(av_ti[ti_ind], linestyle='--', color='black')
             plt.plot(av_ti, av_tr)
             plt.fill_between(av_ti, (av_tr - ci), (av_tr + ci), alpha=0.1)
-        plt.show()
+            plt.show()
         return
 
+    def plot_mt_eta(self, curve, event_times, window, *args):
+        for arg in args:
+            av_tr, mt_eta, av_ti, ci = self.mt_event_triggered_average(curve, event_times, window, arg)
+            plt.axvline(0, linestyle='--', color='black')
+            plt.plot(av_ti, av_tr)
+            plt.fill_between(av_ti, (av_tr - ci), (av_tr + ci), alpha=0.1)
+        plt.xlabel('Time (s)')
+        plt.ylabel(r'$\frac{dF}{F}$ (%)')
+        return
 
 def make_3d_timeseries(timeseries, timestamps, x_axis, y_axis, z_axis, **kwargs):
     sb.set()
@@ -664,86 +756,3 @@ def make_3d_timeseries(timeseries, timestamps, x_axis, y_axis, z_axis, **kwargs)
     axs.set_ylabel(y_axis)
     axs.set_zlabel(z_axis)
     return
-
-
-if __name__ == '__main__':
-    """
-    for when i do stuff on my mac. note this  is not real analysis and only for testing purposes
-    """
-    # engram_recall_1 = fiberPhotometryCurve(
-    #     '/Users/ryansenne/Desktop/Rebecca_Data/Test_Pho_FP_engram_day1_FC_mouse2.csv',
-    #     None, **{'treatment': 'ChR2', 'task': 'Recall'})
-    #
-    # engram_recall_2 = fiberPhotometryCurve(
-    #     '/Users/ryansenne/Desktop/Rebecca_Data/Test_Pho_FP_engram_day2_recall_mouse3.csv',
-    #     None, **{'treatment': 'ChR2', 'task': 'Recall'})
-    #
-    # sham_recall_1 = fiberPhotometryCurve(
-    #     '/Users/ryansenne/Desktop/Rebecca_Data/Test_Pho_FP_engram_day2_recall_mouse3.csv',
-    #     None, **{'treatment': 'ChR2', 'task': 'Recall'})
-    #
-    # sham_recall_2 = fiberPhotometryCurve(
-    #     '/Users/ryansenne/Desktop/Rebecca_Data/Test_Pho_FP_engram_day2_recall_mouse4.csv',
-    #     None, **{'treatment': 'ChR2', 'task': 'Recall'})
-    #
-    # engram_exp = fiberPhotometryExperiment(engram_recall_1, engram_recall_2, sham_recall_1, sham_recall_2)
-    # z = engram_exp.event_triggered_average('Recall-ChR2', 'GCaMP', 1, 40)
-
-    """
-    for when i do stuff on linux
-    """
-
-
-    """fc_1 = fiberPhotometryCurve('/Users/ryansenne/Desktop/Rebecca_Data/Test_Pho_engram_ChR2_m1_FC.csv', None, None,
-                                None,
-                                **{'treatment': 'ChR2', 'task': 'FC'})
-                                """
-    # fc_2 = fiberPhotometryCurve('/home/ryansenne/Data/Rebecca/Test_Pho_engram_ChR2_m2_FC.csv', None,
-    #                             **{'treatment': 'ChR2', 'task': 'FC'})
-    # fc_3 = fiberPhotometryCurve('/home/ryansenne/Data/Rebecca/Test_Pho_engram_ChR2_m3_FC.csv', None,
-    #                             **{'treatment': 'ChR2', 'task': 'FC'})
-    # fc_4 = fiberPhotometryCurve('/home/ryansenne/Data/Rebecca/Test_Pho_engram_ChR2_m4_FC.csv', None,
-    #                             **{'treatment': 'ChR2', 'task': 'FC'})
-    # fc_5 = fiberPhotometryCurve('/home/ryansenne/Data/Rebecca/Test_Pho_engram_eYFP_m1_FC.csv', None,
-    #                             **{'treatment': 'eYFP', 'task': 'FC'})
-    # fc_6 = fiberPhotometryCurve('/home/ryansenne/Data/Rebecca/Test_Pho_engram_eYFP_m2_FC.csv', None,
-    #                             **{'treatment': 'eYFP', 'task': 'FC'})
-    # fc_7 = fiberPhotometryCurve('/home/ryansenne/Data/Rebecca/Test_Pho_engram_eYFP_m3_FC.csv', None,
-    #                             **{'treatment': 'eYFP', 'task': 'FC'})
-    # fc_8 = fiberPhotometryCurve('/home/ryansenne/Data/Rebecca/Test_Pho_engram_eYFP_m4_FC.csv', None,
-    #                             **{'treatment': 'eYFP', 'task': 'FC'})
-    #
-
-    #michelleb does stuff practice
-    fc_prac = fiberPhotometryCurve('/Users/michellebuzharsky/Downloads/Test_Pho_BLA_C1_M1_FC.csv', None, None,
-                                None,
-                                **{'treatment': 'ChR2', 'task': 'FC', 'DLC_file': '/Users/michellebuzharsky/Downloads/recallnoshock.csv', 'anymaze_file': '/Users/michellebuzharsky/Downloads/BLA_FC_Freeze - m1.csv'})
-    print(len(fc_prac.Timestamps['GCaMP']))
-    print(fc_prac.behavioral_data)
-
-
-    # fc_experiment = fiberPhotometryExperiment(fc_1, fc_2, fc_3, fc_4, fc_5, fc_6, fc_7, fc_8)
-
-    # z, z1, z2 = fc_experiment.event_triggered_average('GCaMP', 124, 10, 'FC-ChR2')
-    # fc_experiment.plot_eta('GCaMP', 124, 10, 'FC-ChR2', 'FC-eYFP')
-
-    # b_test = b_spline.bSpline(120, 3, 9)
-    # maps, dicts = b_test.create_spline_map([1100, 1650, 2200, 2800], len(fc_1.DF_F_Signals['GCaMP']))
-    # model = fc_1.fit_general_linear_model('GCaMP', dicts)
-    # model.predict(sm.add_constant(sm.add_constant(pd.DataFrame(dicts))))
-
-#time = fc_1.Timestamps['GCaMP']
-#my_behave_file = pd.read_csv('/Users/ryansenne/Desktop/Rebecca_Data/Engram_Round2_FC_Freeze - ChR2_m1.csv')
-#x, y, z = fc_1.process_anymaze(my_behave_file, time)
-
-
-"""
-time = fc_prac.Timestamps['GCaMP']
-x, y, z = fc_prac.process_anymaze(pd.read_csv('/Users/michellebuzharsky/Downloads/BLA_FC_Freeze - m1.csv'), time)
-#print(x)
-print(y)
-print(len(y))
-print(z)
-"""
-
-test = 'test test!'
