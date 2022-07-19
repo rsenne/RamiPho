@@ -160,6 +160,14 @@ class fiberPhotometryCurve:
             #creates a numpy array as a value for the velocity and acceleration, taken from velocity and acceleration columns of df
             self.behavioral_data['DLC']['velocity'] = df['velocity'].to_numpy()
             self.behavioral_data['DLC']['acceleration'] = df['acceleration'].to_numpy()
+        if hasattr(self, 'anymaze_file'):  # if there's an anymaze file key word arg
+            self.behavioral_data['Anymaze'] = {}  # creates nested dictionary within behavioral data dictionary
+            # passes csv DLC file through calc_kinematics function, stores it in pandas df
+            df = pd.read_csv(getattr(self, 'anymaze_file'))
+            anymaze_df, freeze_vector, inds =  self.process_anymaze(df, self.Timestamps['GCaMP'])
+            #puts freeze vector array and inds from the process anymaze function into the Anymaze dictionary
+            self.behavioral_data['Anymaze']['freeze_vector'] = freeze_vector
+            self.behavioral_data['Anymaze']['inds'] = inds
 
 
     def __iter__(self):
@@ -296,16 +304,23 @@ class fiberPhotometryCurve:
         return
 
     def process_anymaze(self, anymaze_file, timestamps):
+        """
+
+        :param anymaze_file: panda dataframe of anymaze data
+        :param timestamps: array of timestamps
+        :return: anymaze file, binary freeze vector, and inds(?)
+        """
         length = len(timestamps)
         times = anymaze_file.Time.str.split(':')
         for i in range(len(times)):
             anymaze_file.loc[i, 'seconds'] = (float(times[i][1]) * 60 + float(times[i][2]))
         anymaze_file.seconds = anymaze_file['seconds'].apply(
             lambda x: (x / anymaze_file.seconds.iloc[-1] * timestamps[-1]))
+        #creates freeze vector array, every second will have corresponding 0 (not freezing) or 1 (freezing)
         binary_freeze_vec = np.zeros(shape=(length))
         i = 0
         while i < len(times):
-            if anymaze_file.loc[i, 'Freezing'] == 1:
+            if anymaze_file.loc[i, 'Freezing'] == 1: #first time freezing
                 t1 = anymaze_file.loc[i, 'seconds']
                 t2 = anymaze_file.loc[i + 1, 'seconds']
                 try:
@@ -679,9 +694,10 @@ if __name__ == '__main__':
     """
 
 
-    fc_1 = fiberPhotometryCurve('/Users/ryansenne/Desktop/Rebecca_Data/Test_Pho_engram_ChR2_m1_FC.csv', None, None,
+    """fc_1 = fiberPhotometryCurve('/Users/ryansenne/Desktop/Rebecca_Data/Test_Pho_engram_ChR2_m1_FC.csv', None, None,
                                 None,
                                 **{'treatment': 'ChR2', 'task': 'FC'})
+                                """
     # fc_2 = fiberPhotometryCurve('/home/ryansenne/Data/Rebecca/Test_Pho_engram_ChR2_m2_FC.csv', None,
     #                             **{'treatment': 'ChR2', 'task': 'FC'})
     # fc_3 = fiberPhotometryCurve('/home/ryansenne/Data/Rebecca/Test_Pho_engram_ChR2_m3_FC.csv', None,
@@ -699,11 +715,11 @@ if __name__ == '__main__':
     #
 
     #michelleb does stuff practice
-    """fc_prac = fiberPhotometryCurve('/Users/michellebuzharsky/Downloads/Test_Pho_engram_ChR2_m1_FC.csv', None, None,
+    fc_prac = fiberPhotometryCurve('/Users/michellebuzharsky/Downloads/Test_Pho_BLA_C1_M1_FC.csv', None, None,
                                 None,
-                                **{'treatment': 'ChR2', 'task': 'FC', 'DLC_file': '/Users/michellebuzharsky/Downloads/recallnoshock.csv'})
-    print("here")
-    print(fc_prac.behavioral_data['DLC'])"""
+                                **{'treatment': 'ChR2', 'task': 'FC', 'DLC_file': '/Users/michellebuzharsky/Downloads/recallnoshock.csv', 'anymaze_file': '/Users/michellebuzharsky/Downloads/BLA_FC_Freeze - m1.csv'})
+    print(len(fc_prac.Timestamps['GCaMP']))
+    print(fc_prac.behavioral_data)
 
 
     # fc_experiment = fiberPhotometryExperiment(fc_1, fc_2, fc_3, fc_4, fc_5, fc_6, fc_7, fc_8)
@@ -719,3 +735,13 @@ if __name__ == '__main__':
 #time = fc_1.Timestamps['GCaMP']
 #my_behave_file = pd.read_csv('/Users/ryansenne/Desktop/Rebecca_Data/Engram_Round2_FC_Freeze - ChR2_m1.csv')
 #x, y, z = fc_1.process_anymaze(my_behave_file, time)
+
+
+"""
+time = fc_prac.Timestamps['GCaMP']
+x, y, z = fc_prac.process_anymaze(pd.read_csv('/Users/michellebuzharsky/Downloads/BLA_FC_Freeze - m1.csv'), time)
+#print(x)
+print(y)
+print(len(y))
+print(z)
+"""
