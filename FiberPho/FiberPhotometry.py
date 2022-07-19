@@ -614,7 +614,7 @@ class fiberPhotometryExperiment:
             plt.show()
         return averaged_trace, average_time[index_left_bound:index_right_bound], ci
 
-    def mt_event_triggered_average(self, curve, event_times, window, group, plot=False, timepoint=True):
+    def mt_event_triggered_average(self, curve, event_times, window, group, plot=False, timepoint=False):
         max_ind = np.min(
             [len(x) for x in [t.Timestamps[curve].tolist() for t in next(iter(getattr(self, group).values()))]])
         time_array = np.array(
@@ -632,18 +632,20 @@ class fiberPhotometryExperiment:
                 inds.append(tps)
         else:
             inds = event_times
+        for i in range(len(inds)):
+            inds[i] = [j for j in inds[i] if j < np.shape(vector_array)[1] - 1]
         mt_eta = []
-        for animal in range(len(vector_array)):
+        for animal in range(np.shape(vector_array)[0]-1):
             if len(event_times) != 1:
-                part_traces = np.array(
-                    [vector_array[animal][indice - (int(ind_plus / 2)):int(indice + ind_plus)].tolist() for indice in
-                     inds[animal]])
+                part_traces = [vector_array[animal][indice - (int(ind_plus / 2)):int(indice + ind_plus)].tolist() for indice in inds[animal]]
+                part_traces = [trace for trace in part_traces if len(trace) == 139]
             else:
                 part_traces = np.array(
                     [vector_array[animal][indice - (int(ind_plus / 2)):int(indice + ind_plus)].tolist() for indice in
                      inds[0]])
-            eta = np.average(part_traces, axis=0)
+            eta = np.average(np.array(part_traces), axis=0)
             mt_eta.append(eta)
+        mt_eta = np.array(mt_eta)
         av_tr = np.average(mt_eta, axis=0)
         ci = 1.96 * np.std(mt_eta, axis=0) / np.sqrt(np.shape(mt_eta)[0])
         time_int = np.linspace(-window / 2, window, len(av_tr))
@@ -671,16 +673,21 @@ class fiberPhotometryExperiment:
         return
 
     def plot_mt_eta(self, curve, event_times, window, *args):
-        fig, ax = plt.subplots()
-        for i in range(len(args)):
-            av_tr, mt_eta, av_ti, ci = self.mt_event_triggered_average(curve, event_times, window, args[i])
-            ax.axvline(0, linestyle='--', color='black')
-            ax.plot(av_ti, av_tr)
-            ax.fill_between(av_ti, (av_tr - ci), (av_tr + ci), alpha=0.1)
-            ax.spines['top'].set_visible(False)
-            ax.spines['right'].set_visible(False)
+        fig, ax = plt.subplots(1, 1)
+        ax.axvline(0, linestyle='--', color='black')
+        ax.spines['top'].set_visible(False)
+        ax.spines['right'].set_visible(False)
         plt.xlabel('Time (s)')
         plt.ylabel(r'$\frac{dF}{F}$ (%)')
+        for i in range(len(args)):
+            if len(event_times) == 1:
+                av_tr, mt_eta, av_ti, ci = self.mt_event_triggered_average(curve, event_times, window, args[i])
+                ax.plot(av_ti, av_tr)
+                ax.fill_between(av_ti, (av_tr - ci), (av_tr + ci), alpha=0.1)
+            else:
+                av_tr, mt_eta, av_ti, ci = self.mt_event_triggered_average(curve, event_times[i], window, args[i])
+                ax.plot(av_ti, av_tr)
+                ax.fill_between(av_ti, (av_tr - ci), (av_tr + ci), alpha=0.1)
         return
 
     def percent_freezing(self, bins, g1, g2):
