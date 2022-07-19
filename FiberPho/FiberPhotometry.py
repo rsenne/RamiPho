@@ -7,7 +7,7 @@ import pandas as pd
 import scipy.stats
 import seaborn as sb
 import statsmodels.api as sm
-import FiberPho.b_spline
+#import FiberPho.b_spline
 from scipy import sparse
 from scipy.integrate import simpson
 from scipy.interpolate import splrep, splev
@@ -158,8 +158,11 @@ class fiberPhotometryCurve:
         self.behavioral_data = {} #behavioral data dictionary
         if hasattr(self, 'DLC_file'): #if there's a DLC file key word arg
             self.behavioral_data['DLC'] = {} #creates nested dictionary within behavioral data dictionary
+
+            #if parameters  of calc_kinematics change, pass them through calc kinematics
             #passes csv DLC file through calc_kinematics function, stores it in pandas df
-            df = self.calc_kinematics(getattr(self, 'DLC_file'))
+            df = self.calc_kinematics(getattr(self, 'DLC_file'), getattr(self, 'bps', None), getattr(self, 'interpolate', True), getattr(self, 'int_f', 100), getattr(self, 'threshold', .6))
+
             #creates a numpy array as a value for the velocity and acceleration, taken from velocity and acceleration columns of df
             self.behavioral_data['DLC']['velocity'] = df['velocity'].to_numpy()
             self.behavioral_data['DLC']['acceleration'] = df['acceleration'].to_numpy()
@@ -172,7 +175,7 @@ class fiberPhotometryCurve:
             #puts freeze vector array and inds from the process anymaze function into the Anymaze dictionary
             self.behavioral_data['Anymaze']['freeze_vector'] = freeze_vector
             self.behavioral_data['Anymaze']['end_freezing'] = inds #ends of freezing  bouts
-           
+
 
     def __iter__(self):
         return iter(list(self.DF_F_Signals.values()))
@@ -736,24 +739,54 @@ class fiberPhotometryExperiment:
         plt.ylabel(r'$\frac{dF}{F}$ (%)')
         return
 
-def make_3d_timeseries(timeseries, timestamps, x_axis, y_axis, z_axis, **kwargs):
-    sb.set()
-    if type(timeseries) != np.array:
-        timeseries = np.asarray(timeseries)
-    if type(timestamps) != np.array:
-        timestamps = np.asarray(timestamps)
-    if np.shape(timeseries) != np.shape(timestamps):
-        raise ValueError(
-            "Shape of timeseries and timestamp data do not match! Perhaps, try transposing? If not, you may have "
-            "concatenated incorrectly.")
-    y_coordinate_matrix = np.zeros(shape=(np.shape(timeseries)[0], np.shape(timeseries)[1]))
-    for i in range(len(timeseries)):
-        y_coordinate_matrix[i, :np.shape(timeseries)[1]] = i + 1
-    plt.figure()
-    axs = plt.axes(projection="3d")
-    for i in reversed(range(len(timeseries))):
-        axs.plot(timestamps[i], y_coordinate_matrix[i], timeseries[i], **kwargs)
-    axs.set_xlabel(x_axis)
-    axs.set_ylabel(y_axis)
-    axs.set_zlabel(z_axis)
-    return
+    def make_3d_timeseries(timeseries, timestamps, x_axis, y_axis, z_axis, **kwargs):
+        sb.set()
+        if type(timeseries) != np.array:
+            timeseries = np.asarray(timeseries)
+        if type(timestamps) != np.array:
+            timestamps = np.asarray(timestamps)
+        if np.shape(timeseries) != np.shape(timestamps):
+            raise ValueError(
+                "Shape of timeseries and timestamp data do not match! Perhaps, try transposing? If not, you may have "
+                "concatenated incorrectly.")
+        y_coordinate_matrix = np.zeros(shape=(np.shape(timeseries)[0], np.shape(timeseries)[1]))
+        for i in range(len(timeseries)):
+            y_coordinate_matrix[i, :np.shape(timeseries)[1]] = i + 1
+        plt.figure()
+        axs = plt.axes(projection="3d")
+        for i in reversed(range(len(timeseries))):
+            axs.plot(timestamps[i], y_coordinate_matrix[i], timeseries[i], **kwargs)
+        axs.set_xlabel(x_axis)
+        axs.set_ylabel(y_axis)
+        axs.set_zlabel(z_axis)
+        return
+
+
+    # Practice things
+    # engram_exp = fiberPhotometryExperiment(engram_recall_1, engram_recall_2, sham_recall_1, sham_recall_2)
+    # z = engram_exp.event_triggered_average('Recall-ChR2', 'GCaMP', 1, 40)
+
+    # fc_2 = fiberPhotometryCurve('/home/ryansenne/Data/Rebecca/Test_Pho_engram_ChR2_m2_FC.csv', None,
+    #                             **{'treatment': 'ChR2', 'task': 'FC'})
+
+    # fc_experiment = fiberPhotometryExperiment(fc_1, fc_2, fc_3, fc_4, fc_5, fc_6, fc_7, fc_8)
+
+    # z, z1, z2 = fc_experiment.event_triggered_average('GCaMP', 124, 10, 'FC-ChR2')
+    # fc_experiment.plot_eta('GCaMP', 124, 10, 'FC-ChR2', 'FC-eYFP')
+
+    # b_test = b_spline.bSpline(120, 3, 9)
+    # maps, dicts = b_test.create_spline_map([1100, 1650, 2200, 2800], len(fc_1.DF_F_Signals['GCaMP']))
+    # model = fc_1.fit_general_linear_model('GCaMP', dicts)
+    # model.predict(sm.add_constant(sm.add_constant(pd.DataFrame(dicts))))
+
+    # time = fc_1.Timestamps['GCaMP']
+    # my_behave_file = pd.read_csv('/Users/ryansenne/Desktop/Rebecca_Data/Engram_Round2_FC_Freeze - ChR2_m1.csv')
+    # x, y, z = fc_1.process_anymaze(my_behave_file, time)
+
+    #Michelle Practice
+    if __name__ == '__main__':
+        fc_prac = fiberPhotometryCurve('/Users/michellebuzharsky/Downloads/Test_Pho_BLA_C1_M1_FC.csv', None, None,
+                                    None,
+                                    **{'treatment': 'ChR2', 'task': 'FC', 'DLC_file': '/Users/michellebuzharsky/Downloads/recallnoshock.csv', 'int_f' : 8, 'interpolate' : False, 'anymaze_file': '/Users/michellebuzharsky/Downloads/BLA_FC_Freeze - m1.csv'})
+        print(len(fc_prac.Timestamps['GCaMP']))
+        print(fc_prac.behavioral_data)
