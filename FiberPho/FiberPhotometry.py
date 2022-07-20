@@ -174,7 +174,6 @@ class fiberPhotometryCurve:
             anymaze_df, freeze_vector, inds_start, inds_end =  self.process_anymaze(df, self.Timestamps['GCaMP'])
             #puts freeze vector array and start/end freezing inds from the process anymaze function into the Anymaze dictionary
             self.behavioral_data['Anymaze']['freeze_vector'] = freeze_vector
-            self.behavioral_data['Anymaze']['end_freezing'] = inds #ends of freezing  bouts
 
             self.behavioral_data['Anymaze']['start_freezing'] = inds_start #start of freezing bouts
             self.behavioral_data['Anymaze']['end_freezing'] = inds_end #ends of freezing bouts
@@ -807,9 +806,18 @@ class fiberPhotometryExperiment:
         plt.ylabel('Velocity (pixels/frame)')
         plt.show()
 
+        plt.plot(fc_prac.behavioral_data['DLC']['acceleration'],color='lightblue')
+        plt.title('Michelle does plots')
+        plt.xlabel('Frames')
+        plt.ylabel('Acceleration')
+        plt.show()
+
         plt.plot(fc_prac.behavioral_data['Anymaze']['freeze_vector'])
         plt.title('Michelle does plots')
         plt.ylabel('Freeze or Nah')
         plt.xlabel('Time (ms)')
         plt.show()
+
+        fig, axs = plt.subplots(3,1)
+        axs[0,0].plot(fc_prac.behavioral_data['DLC']['acceleration'])
 
