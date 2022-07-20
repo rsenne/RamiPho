@@ -166,12 +166,13 @@ class fiberPhotometryCurve:
             # add kwargs
         if hasattr(self, 'anymaze_file'):  # if there's an anymaze file key word arg
             self.behavioral_data['Anymaze'] = {}  # creates nested dictionary within behavioral data dictionary
-            # passes csv DLC file through calc_kinematics function, stores it in pandas df
+            # passes csv anymzze file through process_anymaze method, stores it in pandas df
             df = pd.read_csv(getattr(self, 'anymaze_file'))
-            anymaze_df, freeze_vector, inds =  self.process_anymaze(df, self.Timestamps['GCaMP'])
-            #puts freeze vector array and inds from the process anymaze function into the Anymaze dictionary
+            anymaze_df, freeze_vector, inds_start, inds_end =  self.process_anymaze(df, self.Timestamps['GCaMP'])
+            #puts freeze vector array and start/end freezing inds from the process anymaze function into the Anymaze dictionary
             self.behavioral_data['Anymaze']['freeze_vector'] = freeze_vector
-            self.behavioral_data['Anymaze']['end_freezing'] = inds #ends of freezing  bouts
+            self.behavioral_data['Anymaze']['start_freezing'] = inds_start #start of freezing bouts
+            self.behavioral_data['Anymaze']['end_freezing'] = inds_end #ends of freezing bouts
            
 
     def __iter__(self):
@@ -316,11 +317,12 @@ class fiberPhotometryCurve:
 
         :param anymaze_file: panda dataframe of anymaze data
         :param timestamps: array of timestamps
-        :return: anymaze file, binary freeze vector, and inds(?)
+        :return: anymaze file, binary freeze vector, and inds(end index of freezing bouts )
         """
         length = len(timestamps)
         times = anymaze_file.Time.str.split(':')
-        if len(times[1]) == 3:
+        # convert time from minutes to seconds
+        if len(times[1]) == 3: #Time series in form h:min:secs
             for i in range(len(times)):
                 anymaze_file.loc[i, 'seconds'] = (float(times[i][1]) * 60 + float(times[i][2]))
         else:
@@ -336,16 +338,19 @@ class fiberPhotometryCurve:
                 t1 = anymaze_file.loc[i, 'seconds']
                 t2 = anymaze_file.loc[i + 1, 'seconds']
                 try:
-                    binary_freeze_vec[np.where(timestamps > t1)[0][0]:np.where(timestamps < t2)[0][-1]] = 1
+                    binary_freeze_vec[np.where(timestamps > t1)[0][0]:np.where(timestamps < t2)[0][-1] + 1] = 1 #!!added +1 because end point of slicing is exclusive
                     # print(np.where(timestamps > t1)[0][0], np.where(timestamps < t2)[0][-1])
                 except IndexError:
-                    binary_freeze_vec[np.where(timestamps > t1)[0][0]:np.where(timestamps < t2)[0][-1]] = 1
+                    binary_freeze_vec[np.where(timestamps > t1)[0][0]:np.where(timestamps < t2)[0][-1] + 1] = 1
                 i += 1
             else:
                 i += 1
-        time_val_0 = [anymaze_file.seconds[i] for i in range(1, len(anymaze_file)) if anymaze_file.Freezing[i] == 0]
-        inds = [np.argmin(np.abs(timestamps - time_val)) for time_val in time_val_0] #vector of end of freezing bouts
-        return anymaze_file, binary_freeze_vec, inds
+        time_val_0 = [anymaze_file.seconds[i] for i in range(1, len(anymaze_file)) if anymaze_file.Freezing[i] == 0] #time when non-freezing bout starts
+        time_val_1 = [anymaze_file.seconds[i] for i in range(1, len(anymaze_file)) if anymaze_file.Freezing[i] == 1] #time when freezing bout starts
+        #inds_end = [np.argmin(np.abs(timestamps - time_val)) for time_val in time_val_0] #vector of end of freezing bouts
+        inds_end = [int(np.argwhere(timestamps <= time_val)[-1]) for time_val in time_val_0] #list of end indices of freezing bouts
+        inds_start = [int(np.argwhere(timestamps >= time_val)[0]) for time_val in time_val_1] #list of start indices of freezing bouts
+        return anymaze_file, binary_freeze_vec, inds_start, inds_end
 
     def calc_kinematics(self, DLC_file, bps=None, interpolate=True, int_f=100, threshold=.6):
 
