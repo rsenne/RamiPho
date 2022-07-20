@@ -817,7 +817,12 @@ class fiberPhotometryExperiment:
         plt.ylabel('Freeze or Nah')
         plt.xlabel('Time (ms)')
         plt.show()
-
+#%% Plot them together yay
         fig, axs = plt.subplots(3,1)
-        axs[0,0].plot(fc_prac.behavioral_data['DLC']['acceleration'])
-
+        axs[0].plot(fc_prac.behavioral_data['Anymaze']['freeze_vector'])
+        axs[0].set_xlabel('time (ms)')
+        axs[0].set_ylabel('Freeze or nahh')
+        axs[1].plot(fc_prac.behavioral_data['DLC']['velocity'])
+        axs[1].set_xlabel('frames')
+        axs[2].plot(fc_prac.behavioral_data['DLC']['acceleration'])
+        axs[2].set_xlabel('frames')
