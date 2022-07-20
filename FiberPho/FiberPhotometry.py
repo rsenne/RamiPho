@@ -317,7 +317,7 @@ class fiberPhotometryCurve:
 
         :param anymaze_file: panda dataframe of anymaze data
         :param timestamps: array of timestamps
-        :return: anymaze file, binary freeze vector, and inds(end index of freezing bouts )
+        :return: anymaze file, binary freeze vector, inds_start, inds_end (lists of start/end index of freezing bouts)
         """
         length = len(timestamps)
         times = anymaze_file.Time.str.split(':')
