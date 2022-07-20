@@ -504,7 +504,7 @@ class fiberPhotometryCurve:
         indice_extrema = np.where(np.diff(rolled_average) < 0)[0] - 1
         return indice_extrema
 
-
+#%%
 class fiberPhotometryExperiment:
     def __init__(self, *args):
         self.treatment = {}
@@ -784,9 +784,25 @@ class fiberPhotometryExperiment:
     # x, y, z = fc_1.process_anymaze(my_behave_file, time)
 
     #Michelle Practice
-    if __name__ == '__main__':
+    #%%if __name__ == '__main__':
         fc_prac = fiberPhotometryCurve('/Users/michellebuzharsky/Downloads/Test_Pho_BLA_C1_M1_FC.csv', None, None,
                                     None,
-                                    **{'treatment': 'ChR2', 'task': 'FC', 'DLC_file': '/Users/michellebuzharsky/Downloads/recallnoshock.csv', 'int_f' : 8, 'interpolate' : False, 'anymaze_file': '/Users/michellebuzharsky/Downloads/BLA_FC_Freeze - m1.csv'})
+                                    **{'treatment': 'ChR2', 'task': 'FC', 'DLC_file': '/Users/michellebuzharsky/Downloads/bla_c1_m1.csv', 'anymaze_file': '/Users/michellebuzharsky/Downloads/BLA_FC_Freeze - m1.csv'})
         print(len(fc_prac.Timestamps['GCaMP']))
         print(fc_prac.behavioral_data)
+#%%Before
+        plt.plot(fc_prac.behavioral_data['DLC']['velocity'][100:])
+        plt.show()
+#%% After
+        plt.plot(fc_prac.behavioral_data['DLC']['velocity'],color='pink')
+        plt.title('Michelle does plots')
+        plt.xlabel('Frames')
+        plt.ylabel('Velocity (pixels/frame)')
+        plt.show()
+
+        plt.plot(fc_prac.behavioral_data['Anymaze']['freeze_vector'])
+        plt.title('Michelle does plots')
+        plt.ylabel('Freeze or Nah')
+        plt.xlabel('Time (ms)')
+        plt.show()
+
