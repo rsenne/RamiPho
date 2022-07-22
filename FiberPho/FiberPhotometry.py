@@ -208,7 +208,7 @@ class fiberPhotometryCurve:
         return True
 
     @staticmethod
-    def _als_detrend(y, lam=10e7, p=0.01, niter=100):
+    def _als_detrend(y, lam=10e7, p=0.01, niter=100): #asymmetric least squares smoothing method
         L = len(y)
         D = sparse.diags([1, -2, 1], [0, -1, -2], shape=(L, L - 2))
         D = lam * D.dot(D.transpose())  # Precompute this term since it does not depend on `w`
@@ -224,6 +224,13 @@ class fiberPhotometryCurve:
 
     @staticmethod
     def smooth(signal, kernel, visual_check=False):
+        """
+
+        :param signal: array of signal of interest (GCaMP, Isobestic_GCaMP, etc)
+        :param kernel: int length of uniform filter
+        :param visual_check: boolean for plotting original vs smoothed signal
+        :return: array smoothed by 1D uniform filter
+        """
         smooth_signal = uniform_filter1d(signal, kernel)
         if visual_check:
             plt.figure()
@@ -257,9 +264,9 @@ class fiberPhotometryCurve:
         areas = np.asarray([simpson(timeseries[i:j]) for i, j in zip(l_index, r_index)])
         return areas
 
-    def process_data(self):
-        signals = [signal for signal in self.Signal.values()]
-        baseline_corr_signal = [self._als_detrend(sig) for sig in signals]
+    def process_data(self): #correct baseline, smoothed with uniform filter
+        signals = [signal for signal in self.Signal.values()] #list of raw signals
+        baseline_corr_signal = [self._als_detrend(sig) for sig in signals] #list of baseline corrected signals
         df_f_signals = [self._df_f(s, kind='standard') for s in baseline_corr_signal]
         df_z_signals = [self._df_f(s, kind='std') for s in baseline_corr_signal]
         for i in range(len(df_f_signals)):
@@ -300,6 +307,11 @@ class fiberPhotometryCurve:
         return peak_properties
 
     def visual_check_peaks(self, signal):
+        """
+        Plots object's df_f signal overlayed with peaks
+        :param signal: string of which signal to check
+        :return:
+        """
         if hasattr(self, "peak_properties"):
             plt.figure()
             plt.plot(self.DF_F_Signals[signal])
