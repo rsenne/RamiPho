@@ -166,6 +166,26 @@ class fiberPhotometryCurve:
         self.peak_properties = self.find_signal()
         self.neg_peak_properties = self.find_signal(neg=True)
 
+        # mb trying to do behavioral dict of dicts
+        # if there's a DLC file, apply calc kinematics on that file and then put the velocity and accel column as keys
+        self.behavioral_data = {} #behavioral data dictionary
+        if hasattr(self, 'DLC_file'): #if there's a DLC file key word arg
+            self.behavioral_data['DLC'] = {} #creates nested dictionary within behavioral data dictionary
+            #passes csv DLC file through calc_kinematics function, stores it in pandas df
+            df = self.calc_kinematics(getattr(self, 'DLC_file'))
+            #creates a numpy array as a value for the velocity and acceleration, taken from velocity and acceleration columns of df
+            self.behavioral_data['DLC']['velocity'] = df['velocity'].to_numpy()
+            self.behavioral_data['DLC']['acceleration'] = df['acceleration'].to_numpy()
+        if hasattr(self, 'anymaze_file'):  # if there's an anymaze file key word arg
+            self.behavioral_data['Anymaze'] = {}  # creates nested dictionary within behavioral data dictionary
+            # passes csv DLC file through calc_kinematics function, stores it in pandas df
+            df = pd.read_csv(getattr(self, 'anymaze_file'))
+            anymaze_df, freeze_vector, inds =  self.process_anymaze(df, self.Timestamps['GCaMP'])
+            #puts freeze vector array and inds from the process anymaze function into the Anymaze dictionary
+            self.behavioral_data['Anymaze']['freeze_vector'] = freeze_vector
+            self.behavioral_data['Anymaze']['end_freezing'] = inds #ends of freezing  bouts
+
+
     def __iter__(self):
         return iter(list(self.DF_F_Signals.values()))
 
@@ -226,10 +246,16 @@ class fiberPhotometryCurve:
 
     @staticmethod
     def _df_f(raw, kind="std"):
-        F0 = np.median(raw)
+        """
+        :param raw: a smoothed baseline-corrected array of fluorescence values
+        :param kind: whether you want standard df/f or if you would like a z-scored scaling
+        :return: df/f standard or z-scored
+        Function to calculate DF/F (signal - median / median or standard deviation).
+        """
+        F0 = np.median(raw)  # median value of time series
         if kind == "standard":
             df_f = (raw - F0) / F0
-        else:
+        else:  # z-scored
             df_f = (raw - F0) / np.std(raw)
         return df_f
 
@@ -315,12 +341,14 @@ class fiberPhotometryCurve:
                 anymaze_file.loc[i, 'seconds'] = (float(times[i][0]) * 60 + float(times[i][1]))
         anymaze_file.seconds = anymaze_file['seconds'].apply(
             lambda x: (x / anymaze_file.seconds.iloc[-1] * timestamps[-1]))
+
         anymaze_file.seconds = anymaze_file.seconds - self.OffSet
         anymaze_file = anymaze_file[anymaze_file['seconds'] > 0].reset_index()
         binary_freeze_vec = np.zeros(shape=length)
         i = 0
         while i < len(anymaze_file):
             if anymaze_file.loc[i, 'Freezing'] == 1:
+
                 t1 = anymaze_file.loc[i, 'seconds']
                 try:
                     t2 = anymaze_file.loc[i + 1, 'seconds']
@@ -337,8 +365,9 @@ class fiberPhotometryCurve:
             else:
                 i += 1
         time_val_0 = [anymaze_file.seconds[i] for i in range(1, len(anymaze_file)) if anymaze_file.Freezing[i] == 0]
-        inds = [np.argmin(np.abs(timestamps - time_val)) for time_val in time_val_0]
+        inds = [np.argmin(np.abs(timestamps - time_val)) for time_val in time_val_0] #vector of end of freezing bouts
         return anymaze_file, binary_freeze_vec, inds
+
 
     def calc_binned_freezing(self, bins):
         bin_time = np.diff(bins)[0]
@@ -392,6 +421,105 @@ class fiberPhotometryCurve:
                     i += 1
         setattr(self, 'binned_freezing', freeze_time / bin_time)
         return
+        
+    def calc_kinematics(self, DLC_file, bps=None, interpolate=True, int_f=100, threshold=.6):
+
+        """
+
+        :param DLC_file: DLC-processed csv file
+        :param bps: array of labeled body parts
+        :param interpolate: boolean expression, interpolates x and y coordinates for a variable number of frames whose probabilities are less than threshold amount
+        :param int_f: variable for maximum number of frames to  interpolate, default is 100 if interpolate is true
+        :param threshold: variable for minimum probability to threshold,  values higher  than threshold  will be kept, interpolated frames  will be set to threshold + .001
+        :return: data frame  with interpolated  x and  y coordinates and probabilities, x and y centroid columns, distance, velocity, and acceleration
+        Function to calculate kinematics i.e. distance, velocity, acceleration
+        """
+
+        # default  body part  array
+        if bps is None:
+            bps = ['snout', 'l_ear', 'r_ear', 'front_l_paw', 'front_r_paw', 'back_l_paw', 'back_r_paw',
+                   'base_of_tail']
+
+        # cleans up csv file
+        df = pd.read_csv(DLC_file, header=[1, 2])
+        df = df.dropna(how='all')
+        df = df.dropna(1)
+        df.columns = df.columns.get_level_values(0) + '_' + df.columns.get_level_values(1)
+
+        # converts to second by dividing number of frames+1 by the frame number
+        df["bodyparts_coords"] = df["bodyparts_coords"].apply(lambda x: x / 29)
+        # creates seconds column
+        df.rename(columns={'bodyparts_coords': 'seconds'}, inplace=True)
+
+        # sets distance, velocity, and acceleration column   time 0  to 0
+        df.at[0, 'distance'] = 0
+        df.at[0, 'velocity'] = 0
+        df.at[0, 'acceleration'] = 0
+
+        # interpolates for 100 frames
+        if interpolate:
+            # interpolates for next int_f frames
+            for bp in bps:  # GOES BODY PART AT A TIME
+                row = 0  # counter for row
+                while row < len(df) - 1:
+                    num = 0  # counter for how many nums to fill in
+                    og_x = 0
+                    og_y = 0
+
+                    # finds first value where next value has below threshold prob
+                    if (df.at[row, bp + '_likelihood'] > threshold) and (row != len(df)) and (
+                            df.at[row + 1, bp + '_likelihood'] <= threshold):
+                        # og nums, to be used later when calculating how much to add to each number
+                        og_x = df.at[row, bp + '_x']
+                        og_y = df.at[row, bp + '_y']
+                        row += 1
+                        # is going to move onto the next row
+                        while (num <= int_f):
+                            f = num + row  # row value is still og, num is how many frames it moves, so f is current row to check
+                            if (num > int_f) or (f > len(
+                                    df) - 1):  # if pass int_f frames, give up updating for this cycle, update row, and then reset everything, or if get to end of dataframe
+                                row += num
+                                num = 0
+                                og_y = 0
+                                og_x = 0
+                                break
+                            elif (df.at[
+                                      f, bp + '_likelihood'] > threshold):  # next value is greater  than threshold, will be final value, need another loop to reupdate
+                                final_x = df.at[f, bp + '_x']
+                                final_y = df.at[f, bp + '_y']
+                                update_x = (final_x - og_x) / (num + 1)  # number to increment x by
+                                update_y = (final_y - og_y) / (num + 1)  # number to increment y by
+                                n = 1
+                                for ind in range(row, f):  # number to multiply update_val by
+                                    df.at[ind, bp + '_x'] = og_x + update_x * n
+                                    df.at[ind, bp + '_y'] = og_y + update_y * n
+                                    df.at[ind, bp + '_likelihood'] = threshold + .001
+                                    n += 1
+                                row += num
+                                num = 0
+                                og_y = 0
+                                og_x = 0
+                                break  # break out of loop, update row
+                            else:  # next value is <.6, keep going and update num
+                                num += 1
+                    else:
+                        row += 1
+
+        # calculates centroid values for x and y
+        for i in range(len(df)):
+            df.at[i, 'centroid_x'] = np.average(
+                [df.at[i, f"{b_part}" + "_x"] for b_part in bps if df.at[i, f"{b_part}" + "_likelihood"] > threshold])
+            df.at[i, 'centroid_y'] = np.average(
+                [df.at[i, f"{b_part}" + "_y"] for b_part in bps if df.at[i, f"{b_part}" + "_likelihood"] > threshold])
+            # calculates distance traveled from  last frame, velocity, and acceleration
+            if (i > 0):
+                df.at[i, 'distance'] = np.sqrt((df.at[i - 1, 'centroid_x'] - df.at[i, 'centroid_x']) ** 2 + (
+                        df.at[i - 1, 'centroid_y'] - df.at[i, 'centroid_y']) ** 2)
+                df.at[i, 'velocity'] = df.at[i, 'distance'] / (1 / 29)
+                df.at[i, 'acceleration'] = ((df.at[i, 'velocity']) - (df.at[i - 1, 'velocity'])) / (1 / 29)
+        # returns data  frame  with added  centroid  (x/y) columns, distance, velocity and acceleration
+        return df
+        
 
     def save_fp(self, filename):
         file = open(filename, 'wb')
@@ -455,6 +583,7 @@ class fiberPhotometryExperiment:
         self.treatment = {}
         self.task = {}
         self.curves = [arg for arg in args]
+        self.dlc = {}  # csv
 
         for arg in args:
             if hasattr(arg, 'treatment'):
@@ -476,6 +605,10 @@ class fiberPhotometryExperiment:
                     self.__add_to_attribute_dict__('task', arg, arg.task)
                 else:
                     print('No task supplied, assuming all animals are in the same group.')
+
+
+
+
 
         self.__set_permutation_dicts__('task', 'treatment')
         for GECI in self.curves[1].DF_F_Signals.keys():
