@@ -49,10 +49,26 @@ class fiberPhotometryCurve:
         self._sample_time_ = np.diff(self.fp_df['Timestamp'])[1]
 
         # this needs to be here for coherent timestamp data between behavioral analysis and signal
-        if hasattr(self, 'anymaze_file'):
-            self.anymaze_file, self.freeze_vec, self.freeze_inds = self.process_anymaze(pd.read_csv(self.anymaze_file),
-                                                                                        self.fp_df.Timestamp[self.fp_df[
-                                                                                                                 'LedState'] == 1])
+
+        # mb trying to do behavioral dict of dicts
+        # if there's a DLC file, apply calc kinematics on that file and then put the velocity and accel column as keys
+        self.behavioral_data = {}  # behavioral data dictionary
+        if hasattr(self, 'DLC_file'):  # if there's a DLC file key word arg
+            self.behavioral_data['DLC'] = {}  # creates nested dictionary within behavioral data dictionary
+            # passes csv DLC file through calc_kinematics function, stores it in pandas df
+            df = self.calc_kinematics(self.DLC_file)
+            # creates a numpy array as a value for the velocity and acceleration, taken from velocity and
+            # acceleration columns of df
+            self.behavioral_data['DLC']['velocity'] = df['velocity'].to_numpy()
+            self.behavioral_data['DLC']['acceleration'] = df['acceleration'].to_numpy()
+        if hasattr(self, 'anymaze_file'):  # if there's an anymaze file key word arg
+            self.behavioral_data['Anymaze'] = {}  # creates nested dictionary within behavioral data dictionary
+            # passes csv DLC file through calc_kinematics function, stores it in pandas df
+            df = pd.read_csv(self.anymaze_file)
+            anymaze_df, freeze_vector, inds = self.process_anymaze(df, self.fp_df.Timestamp[self.fp_df['LedState'] == 1])
+            # puts freeze vector array and inds from the process anymaze function into the Anymaze dictionary
+            self.behavioral_data['Anymaze']['freeze_vector'] = freeze_vector
+            self.behavioral_data['Anymaze']['end_freezing'] = inds  # ends of freezing  bouts
 
         if hasattr(self, 'manual_off_set'):
             self.fp_df = self.fp_df[int(self.manual_off_set // self._sample_time_):].reset_index()
@@ -162,25 +178,6 @@ class fiberPhotometryCurve:
         self.peak_properties = self.find_signal()
         self.neg_peak_properties = self.find_signal(neg=True)
 
-        # mb trying to do behavioral dict of dicts
-        # if there's a DLC file, apply calc kinematics on that file and then put the velocity and accel column as keys
-        self.behavioral_data = {}  # behavioral data dictionary
-        if hasattr(self, 'DLC_file'):  # if there's a DLC file key word arg
-            self.behavioral_data['DLC'] = {}  # creates nested dictionary within behavioral data dictionary
-            # passes csv DLC file through calc_kinematics function, stores it in pandas df
-            df = self.calc_kinematics(getattr(self, 'DLC_file'))
-            # creates a numpy array as a value for the velocity and acceleration, taken from velocity and
-            # acceleration columns of df
-            self.behavioral_data['DLC']['velocity'] = df['velocity'].to_numpy()
-            self.behavioral_data['DLC']['acceleration'] = df['acceleration'].to_numpy()
-        if hasattr(self, 'anymaze_file'):  # if there's an anymaze file key word arg
-            self.behavioral_data['Anymaze'] = {}  # creates nested dictionary within behavioral data dictionary
-            # passes csv DLC file through calc_kinematics function, stores it in pandas df
-            df = pd.read_csv(getattr(self, 'anymaze_file'))
-            anymaze_df, freeze_vector, inds = self.process_anymaze(df, self.Timestamps['GCaMP'])
-            # puts freeze vector array and inds from the process anymaze function into the Anymaze dictionary
-            self.behavioral_data['Anymaze']['freeze_vector'] = freeze_vector
-            self.behavioral_data['Anymaze']['end_freezing'] = inds  # ends of freezing  bouts
 
     def __iter__(self):
         return iter(list(self.DF_F_Signals.values()))
@@ -853,4 +850,10 @@ def make_3d_timeseries(timeseries, timestamps, x_axis, y_axis, z_axis, **kwargs)
     return
 
 
-fpc = fiberPhotometryCurve()
+fpc = fiberPhotometryCurve(r"C:\Users\Ryan Senne\Documents\RLS_Team_Data\BLA_Extinction\FC\Test_Pho_BLA_C1_M1_FC.csv",
+                           **{
+                               'anymaze_file': r"C:\Users\Ryan Senne\Documents\RLS_Team_Data\BLA_Extinction\FC"
+                                               r"\BLA_FC_Freeze - m1.csv",
+                               'task': 'fc',
+                               'treatment': 'shock'
+                           })
