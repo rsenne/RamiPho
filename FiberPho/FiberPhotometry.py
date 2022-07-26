@@ -19,9 +19,7 @@ __all__ = ["fiberPhotometryCurve", "fiberPhotometryExperiment"]
 
 
 class fiberPhotometryCurve:
-    def __init__(self, npm_file: str, behavioral_data: str = None, keystroke_offset=None, manual_off_set=None,
-                 remove_extrema=False,
-                 **kwargs):
+    def __init__(self, npm_file: str, **kwargs):
         """
         :param npm_file: str Path to csv fiber photometry file gathered using a neurophotometrics fp3002 rig and bonsai software
         :param behavioral_data: Path(s) to csv files, either deeplabcut or anymaze, for doing behavioral analysis
@@ -30,39 +28,37 @@ class fiberPhotometryCurve:
         :param kwargs: dict containing values such as "ID", "task", and/or "treatment" note: task and treatment necessary for use in fiberPhotometryExperiment
 
         """
+        for key, value in kwargs.items():
+            setattr(self, key, value)
 
         # these should always be present
         self.npm_file = npm_file
-        self.behavioral_data = behavioral_data
         self.fp_df = pd.read_csv(self.npm_file)
         self.__T0__ = self.fp_df['Timestamp'][1]
 
-        if keystroke_offset or manual_off_set:
-            if keystroke_offset:
-                self.OffSet = (keystroke_offset - self.fp_df.at[0, 'Timestamp'])
+        # unpack extra params
+        if hasattr(self, 'keystroke_offset') or hasattr(self, 'manual_off_set'):
+            if hasattr(self, 'keystroke_offset'):
+                self.OffSet = (self.keystroke_offset - self.fp_df.at[0, 'Timestamp'])
             else:
-                self.OffSet = manual_off_set
+                self.OffSet = self.manual_off_set
         else:
             self.OffSet = 0.0
-
-        # unpack extra params
-        for key, value in kwargs.items():
-            setattr(self, key, value)
 
         # determine sample time
         self._sample_time_ = np.diff(self.fp_df['Timestamp'])[1]
 
         # this needs to be here for coherent timestamp data between behavioral analysis and signal
-        if behavioral_data:
-            self.anymaze_file, self.freeze_vec, self.freeze_inds = self.process_anymaze(pd.read_csv(behavioral_data),
+        if hasattr(self, 'anymaze_file'):
+            self.anymaze_file, self.freeze_vec, self.freeze_inds = self.process_anymaze(pd.read_csv(self.anymaze_file),
                                                                                         self.fp_df.Timestamp[self.fp_df[
                                                                                                                  'LedState'] == 1])
 
-        if manual_off_set:
-            self.fp_df = self.fp_df[int(manual_off_set // self._sample_time_):].reset_index()
+        if hasattr(self, 'manual_off_set'):
+            self.fp_df = self.fp_df[int(self.manual_off_set // self._sample_time_):].reset_index()
 
-        if keystroke_offset:
-            ind = self.fp_df[self.fp_df['Timestamp'] == keystroke_offset].index[0]
+        if hasattr(self, 'keystroke_offset'):
+            ind = self.fp_df[self.fp_df['Timestamp'] == self.keystroke_offset].index[0]
             self.fp_df = self.fp_df[ind - 1:].reset_index()
             self.__T0__ = self.fp_df['Timestamp'][0]
 
@@ -168,23 +164,23 @@ class fiberPhotometryCurve:
 
         # mb trying to do behavioral dict of dicts
         # if there's a DLC file, apply calc kinematics on that file and then put the velocity and accel column as keys
-        self.behavioral_data = {} #behavioral data dictionary
-        if hasattr(self, 'DLC_file'): #if there's a DLC file key word arg
-            self.behavioral_data['DLC'] = {} #creates nested dictionary within behavioral data dictionary
-            #passes csv DLC file through calc_kinematics function, stores it in pandas df
+        self.behavioral_data = {}  # behavioral data dictionary
+        if hasattr(self, 'DLC_file'):  # if there's a DLC file key word arg
+            self.behavioral_data['DLC'] = {}  # creates nested dictionary within behavioral data dictionary
+            # passes csv DLC file through calc_kinematics function, stores it in pandas df
             df = self.calc_kinematics(getattr(self, 'DLC_file'))
-            #creates a numpy array as a value for the velocity and acceleration, taken from velocity and acceleration columns of df
+            # creates a numpy array as a value for the velocity and acceleration, taken from velocity and
+            # acceleration columns of df
             self.behavioral_data['DLC']['velocity'] = df['velocity'].to_numpy()
             self.behavioral_data['DLC']['acceleration'] = df['acceleration'].to_numpy()
         if hasattr(self, 'anymaze_file'):  # if there's an anymaze file key word arg
             self.behavioral_data['Anymaze'] = {}  # creates nested dictionary within behavioral data dictionary
             # passes csv DLC file through calc_kinematics function, stores it in pandas df
             df = pd.read_csv(getattr(self, 'anymaze_file'))
-            anymaze_df, freeze_vector, inds =  self.process_anymaze(df, self.Timestamps['GCaMP'])
-            #puts freeze vector array and inds from the process anymaze function into the Anymaze dictionary
+            anymaze_df, freeze_vector, inds = self.process_anymaze(df, self.Timestamps['GCaMP'])
+            # puts freeze vector array and inds from the process anymaze function into the Anymaze dictionary
             self.behavioral_data['Anymaze']['freeze_vector'] = freeze_vector
-            self.behavioral_data['Anymaze']['end_freezing'] = inds #ends of freezing  bouts
-
+            self.behavioral_data['Anymaze']['end_freezing'] = inds  # ends of freezing  bouts
 
     def __iter__(self):
         return iter(list(self.DF_F_Signals.values()))
@@ -365,9 +361,8 @@ class fiberPhotometryCurve:
             else:
                 i += 1
         time_val_0 = [anymaze_file.seconds[i] for i in range(1, len(anymaze_file)) if anymaze_file.Freezing[i] == 0]
-        inds = [np.argmin(np.abs(timestamps - time_val)) for time_val in time_val_0] #vector of end of freezing bouts
+        inds = [np.argmin(np.abs(timestamps - time_val)) for time_val in time_val_0]  # vector of end of freezing bouts
         return anymaze_file, binary_freeze_vec, inds
-
 
     def calc_binned_freezing(self, bins):
         bin_time = np.diff(bins)[0]
@@ -421,7 +416,7 @@ class fiberPhotometryCurve:
                     i += 1
         setattr(self, 'binned_freezing', freeze_time / bin_time)
         return
-        
+
     def calc_kinematics(self, DLC_file, bps=None, interpolate=True, int_f=100, threshold=.6):
 
         """
@@ -519,7 +514,6 @@ class fiberPhotometryCurve:
                 df.at[i, 'acceleration'] = ((df.at[i, 'velocity']) - (df.at[i - 1, 'velocity'])) / (1 / 29)
         # returns data  frame  with added  centroid  (x/y) columns, distance, velocity and acceleration
         return df
-        
 
     def save_fp(self, filename):
         file = open(filename, 'wb')
@@ -605,10 +599,6 @@ class fiberPhotometryExperiment:
                     self.__add_to_attribute_dict__('task', arg, arg.task)
                 else:
                     print('No task supplied, assuming all animals are in the same group.')
-
-
-
-
 
         self.__set_permutation_dicts__('task', 'treatment')
         for GECI in self.curves[1].DF_F_Signals.keys():
@@ -768,8 +758,9 @@ class fiberPhotometryExperiment:
         mt_eta = []
         for animal in range(np.shape(vector_array)[0]):
             if len(event_times) != 1:
-                trace_len = int(ind_plus) + int(ind_plus/2)
-                part_traces = [vector_array[animal][indice - (int(ind_plus / 2)):int(indice + ind_plus)].tolist() for indice in inds[animal]]
+                trace_len = int(ind_plus) + int(ind_plus / 2)
+                part_traces = [vector_array[animal][indice - (int(ind_plus / 2)):int(indice + ind_plus)].tolist() for
+                               indice in inds[animal]]
                 part_traces = [trace for trace in part_traces if len(trace) == trace_len]
             else:
                 part_traces = np.array(
@@ -860,3 +851,6 @@ def make_3d_timeseries(timeseries, timestamps, x_axis, y_axis, z_axis, **kwargs)
     axs.set_ylabel(y_axis)
     axs.set_zlabel(z_axis)
     return
+
+
+fpc = fiberPhotometryCurve()
