@@ -797,7 +797,7 @@ class fiberPhotometryExperiment:
         print(len(fc_prac.Timestamps['GCaMP']))
         print(fc_prac.behavioral_data)
 #%%Before
-        plt.plot(fc_prac.behavioral_data['DLC']['velocity'][100:])
+        plt.plot(fc_prac.behavioral_data['DLC']['velocity'])
         plt.show()
 #%% After
         plt.plot(fc_prac.behavioral_data['DLC']['velocity'],color='pink')
