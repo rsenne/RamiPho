@@ -292,14 +292,14 @@ class fiberPhotometryCurve:
         if not neg:
             for GECI, sig in self.DF_F_Signals.items():
                 peaks, properties = find_peaks(sig, height=1.0, distance=131, width=25,
-                                               rel_height=0.95)  # height=1.0, distance=130, prominence=0.5, width=25, rel_height=0.90)
+                                               rel_height=0.50)  # height=1.0, distance=130, prominence=0.5, width=25, rel_height=0.90)
                 properties['peaks'] = peaks
                 properties['areas_under_curve'] = self.calc_area(properties['left_bases'], properties['right_bases'],
                                                                  self.DF_F_Signals[GECI])
                 peak_properties[GECI] = properties
         else:
             for GECI, sig in self.DF_F_Signals.items():
-                peaks, properties = find_peaks(-sig, height=1.0, distance=131, width=25, rel_height=0.95)
+                peaks, properties = find_peaks(-sig, height=1.0, distance=131, width=25, rel_height=0.50)
                 properties['peaks'] = peaks
                 properties['areas_under_curve'] = self.calc_area(properties['left_bases'], properties['right_bases'],
                                                                  self.DF_F_Signals[GECI])
@@ -805,7 +805,7 @@ class fiberPhotometryExperiment:
     #%%if __name__ == '__main__':
         fc_prac = fiberPhotometryCurve('/Users/michellebuzharsky/Downloads/Test_Pho_BLA_C1_M1_FC.csv', None, None,
                                     None,
-                                    **{'treatment': 'ChR2', 'task': 'FC', 'DLC_file': '/Users/michellebuzharsky/Downloads/bla_c1_m1.csv', 'anymaze_file': '/Users/michellebuzharsky/Downloads/BLA_FC_Freeze - m1.csv'})
+                                    **{'treatment': 'ChR2', 'task': 'FC'})
         print(len(fc_prac.Timestamps['GCaMP']))
         print(fc_prac.behavioral_data)
 #%%Before
