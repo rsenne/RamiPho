@@ -65,7 +65,8 @@ class fiberPhotometryCurve:
             self.behavioral_data['Anymaze'] = {}  # creates nested dictionary within behavioral data dictionary
             # passes csv DLC file through calc_kinematics function, stores it in pandas df
             df = pd.read_csv(self.anymaze_file)
-            anymaze_df, freeze_vector, inds = self.process_anymaze(df, self.fp_df.Timestamp[self.fp_df['LedState'] == 1])
+            anymaze_df, freeze_vector, inds = self.process_anymaze(df,
+                                                                   self.fp_df.Timestamp[self.fp_df['LedState'] == 1])
             # puts freeze vector array and inds from the process anymaze function into the Anymaze dictionary
             self.behavioral_data['Anymaze']['freeze_vector'] = freeze_vector
             self.behavioral_data['Anymaze']['end_freezing'] = inds  # ends of freezing  bouts
@@ -177,7 +178,6 @@ class fiberPhotometryCurve:
         self.DF_F_Signals, self.DF_Z_Signals = self.process_data()
         self.peak_properties = self.find_signal()
         self.neg_peak_properties = self.find_signal(neg=True)
-
 
     def __iter__(self):
         return iter(list(self.DF_F_Signals.values()))
@@ -849,11 +849,3 @@ def make_3d_timeseries(timeseries, timestamps, x_axis, y_axis, z_axis, **kwargs)
     axs.set_zlabel(z_axis)
     return
 
-
-fpc = fiberPhotometryCurve(r"C:\Users\Ryan Senne\Documents\RLS_Team_Data\BLA_Extinction\FC\Test_Pho_BLA_C1_M1_FC.csv",
-                           **{
-                               'anymaze_file': r"C:\Users\Ryan Senne\Documents\RLS_Team_Data\BLA_Extinction\FC"
-                                               r"\BLA_FC_Freeze - m1.csv",
-                               'task': 'fc',
-                               'treatment': 'shock'
-                           })
