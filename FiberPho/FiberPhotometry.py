@@ -676,10 +676,20 @@ class fiberPhotometryExperiment:
         return stat, pval
 
     def raster(self, group, curve, a, b, colormap):
+        """
+        Plots a heatmap of specified signal over time interval [a:b]
+        :param group: str, desired group to plot
+        :param curve: str, type of signal to plot (GCaMP or Isobestic_GCaMP)
+        :param a: int, start index
+        :param b: int, end index
+        :param colormap: str, matplotlip color map scheme
+        :return:
+        """
         sb.set()
         vector_array = np.array(
             [vec.DF_F_Signals[curve][a:b].tolist() for vec in next(iter(getattr(self, group).values()))])
-        sb.heatmap(vector_array, cmap=colormap)
+        raster = sb.heatmap(vector_array, cmap=colormap)
+        raster.set(xlabel='Time', ylabel='Animal ID')
         plt.show()
         return
 
@@ -753,7 +763,7 @@ class fiberPhotometryExperiment:
         return av_tr, mt_eta, time_int, ci
 
     # test this function
-    def bootstrap(self, inds, average_trace, window, niter):
+    def bootstrap(self, inds, average_trace, window, niter): #Mia do this
         average_trace_copy = average_trace
         actual_values = [max(average_trace_copy[i:i + window] for i in inds)]
         avg_max = []
@@ -783,9 +793,9 @@ class fiberPhotometryExperiment:
         plt.ylabel(r'$\frac{dF}{F}$ (%)')
         return
 
-    def make_3d_timeseries(timeseries, timestamps, x_axis, y_axis, z_axis, **kwargs):
+    def make_3d_timeseries(self, timeseries, timestamps, x_axis, y_axis, z_axis, **kwargs):
         sb.set()
-        if type(timeseries) != np.array:
+        if type(timeseries) != np.array: #Mia: change to if isinstance
             timeseries = np.asarray(timeseries)
         if type(timestamps) != np.array:
             timestamps = np.asarray(timestamps)
