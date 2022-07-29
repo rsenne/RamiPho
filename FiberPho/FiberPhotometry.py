@@ -288,15 +288,39 @@ class fiberPhotometryCurve:
         return res_fit
 
     def find_signal(self, neg=False):
+        """
+
+        :param neg: ?
+        :return: a peak property array based on scipy find_peak function
+        """
+
+        #creates empty peak properties dictionary
         peak_properties = {}
         if not neg:
             for GECI, sig in self.DF_F_Signals.items():
+                #returns array of indices of  peaks, and properties dictionary
                 peaks, properties = find_peaks(sig, height=1.0, distance=131, width=25,
                                                rel_height=0.50)  # height=1.0, distance=130, prominence=0.5, width=25, rel_height=0.90)
+                #adds array  of peak indices to properties dicttionary
                 properties['peaks'] = peaks
+                #calculates area under the curve for each peak and adds to properties dictionary
                 properties['areas_under_curve'] = self.calc_area(properties['left_bases'], properties['right_bases'],
                                                                  self.DF_F_Signals[GECI])
+                #populates  the peak properties dictionary with properties nested dictionary for each GECI
                 peak_properties[GECI] = properties
+
+                #michelle tries to do iei
+
+                # Timestamps and peak_properties have different array  names for isobestic, changes GECI to index into timestamp array
+                if (GECI == 'Isobestic_GCaMP'):
+                    ts = 'GCaMP_Isobestic'
+                else:
+                    ts = GECI
+                # finds the inter event interval between each peak
+                iei = [(self.Timestamps[ts][peak_properties[GECI]['peaks'][i+1]] - self.Timestamps[ts][peak_properties[GECI]['peaks'][i]]) for i in range(len(peak_properties[GECI]['peaks'])-1)]
+
+                peak_properties[GECI]['inter_event_interval'] = iei
+
         else:
             for GECI, sig in self.DF_F_Signals.items():
                 peaks, properties = find_peaks(-sig, height=1.0, distance=131, width=25, rel_height=0.50)
@@ -304,6 +328,8 @@ class fiberPhotometryCurve:
                 properties['areas_under_curve'] = self.calc_area(properties['left_bases'], properties['right_bases'],
                                                                  self.DF_F_Signals[GECI])
                 peak_properties[GECI] = properties
+
+
         return peak_properties
 
     def visual_check_peaks(self, signal):
@@ -807,7 +833,8 @@ class fiberPhotometryExperiment:
                                     None,
                                     **{'treatment': 'ChR2', 'task': 'FC'})
         print(len(fc_prac.Timestamps['GCaMP']))
-        print(fc_prac.behavioral_data)
+
+        print(fc_prac.peak_properties['GCaMP']['inter_event_interval'])
 #%%Before
         plt.plot(fc_prac.behavioral_data['DLC']['velocity'])
         plt.show()
