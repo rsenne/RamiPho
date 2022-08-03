@@ -682,7 +682,7 @@ class fiberPhotometryExperiment:
         :param curve: str, type of signal to plot (GCaMP or Isobestic_GCaMP)
         :param a: int, start index
         :param b: int, end index
-        :param colormap: str, matplotlip color map scheme
+        :param colormap: str, matplotlib color map scheme
         :return:
         """
         sb.set()
@@ -764,8 +764,16 @@ class fiberPhotometryExperiment:
 
     # test this function
     def bootstrap(self, inds, average_trace, window, niter): #Mia do this
+        """
+
+        :param inds: list,  indexes of start time of freezing bouts
+        :param average_trace:
+        :param window: int, range of index after freezing start to look for event
+        :param niter: int, number of iterations
+        :return:
+        """
         average_trace_copy = average_trace
-        actual_values = [max(average_trace_copy[i:i + window] for i in inds)]
+        actual_values = [max(average_trace_copy[i:i + window] for i in inds)] #max signals in each bout window
         avg_max = []
         for i in range(niter):
             np.random.shuffle(average_trace)
@@ -793,26 +801,55 @@ class fiberPhotometryExperiment:
         plt.ylabel(r'$\frac{dF}{F}$ (%)')
         return
 
+    def create_timeseries(self, group, curve='GCaMP', time_length=0):
+        """
+        Creates array of specified signals for traces in each group, return value used in make_3d_timeseries()
+        Maybe incorporate with make_3d_timeseries, or just add to the front of method
+        :param group: str, desired group to grab data from
+        :param curve: str, type of curve
+        :param time_length: int, desired length of time to slice and make timeseries from
+        :return: timeseries, n x m array of n animals in group with respective curve from time[0:time_length]
+        """
+        min_time = np.min(
+            [len(x) for x in [t.Timestamps[curve].tolist() for t in next(iter(getattr(self, group).values()))]]) #shortest timeseries in group
+        if time_length == 0: #did not pass in desired time_length, default to min_time within group
+            time_length = min_time
+        elif time_length > min_time: #desired time_length longer than min_time
+            raise Exception("Desired time length is longer than at least one trace within this group, consider lowering desired time length!")
+        timeseries = np.array([series for series in [t.DF_F_Signals[curve][0:time_length].tolist() for t in next(iter(getattr(self, group).values()))]])
+        return timeseries
+
+
     def make_3d_timeseries(self, timeseries, timestamps, x_axis, y_axis, z_axis, **kwargs):
+        """
+
+        :param timeseries: n x m matrix, n animals each with signal array of length m, returned from create_timeseries()
+        :param timestamps: timestamps array of length m
+        :param x_axis: str, x-axis label
+        :param y_axis: str, y-axis label
+        :param z_axis: str, z-axis label
+        :param kwargs: ??
+        :return: empty
+        """
         sb.set()
-        if type(timeseries) != np.array: #Mia: change to if isinstance
+        if not isinstance(timeseries, np.array):
             timeseries = np.asarray(timeseries)
-        if type(timestamps) != np.array:
+        if not isinstance(timestamps, np.array):
             timestamps = np.asarray(timestamps)
-        if np.shape(timeseries) != np.shape(timestamps):
+        if np.shape(timeseries)[1] != np.shape(timestamps)[0]: #check if timeseries and timestamps match
             raise ValueError(
                 "Shape of timeseries and timestamp data do not match! Perhaps, try transposing? If not, you may have "
                 "concatenated incorrectly.")
-        y_coordinate_matrix = np.zeros(shape=(np.shape(timeseries)[0], np.shape(timeseries)[1]))
+        y_coordinate_matrix = np.zeros(shape=(np.shape(timeseries)[0], np.shape(timeseries)[1])) #n by m zero matrix
         for i in range(len(timeseries)):
-            y_coordinate_matrix[i, :np.shape(timeseries)[1]] = i + 1
+            y_coordinate_matrix[i] = i + 1 #fill rows with 1s, 2s, 3s, down to n. maybe adjust to scale down so lines are closer
         plt.figure()
         axs = plt.axes(projection="3d")
-        for i in reversed(range(len(timeseries))):
-            axs.plot(timestamps[i], y_coordinate_matrix[i], timeseries[i], **kwargs)
-        axs.set_xlabel(x_axis)
-        axs.set_ylabel(y_axis)
-        axs.set_zlabel(z_axis)
+        for j in range(len(timeseries)):
+            axs.plot(timestamps, y_coordinate_matrix[j], timeseries[j], **kwargs)
+        axs.set_xlabel(x_axis) #timestamps
+        axs.set_ylabel(y_axis) #annies
+        axs.set_zlabel(z_axis) #timeseries/signal
         return
 
 
