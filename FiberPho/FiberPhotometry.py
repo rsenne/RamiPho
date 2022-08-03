@@ -846,10 +846,10 @@ class fiberPhotometryExperiment:
         plt.figure()
         axs = plt.axes(projection="3d")
         for j in range(len(timeseries)):
-            axs.plot(timestamps, y_coordinate_matrix[j], timeseries[j], **kwargs)
-        axs.set_xlabel(x_axis) #timestamps
-        axs.set_ylabel(y_axis) #annies
-        axs.set_zlabel(z_axis) #timeseries/signal
+            axs.plot(timestamps, y_coordinate_matrix[j], timeseries[j]) #add back **kwargs?
+        axs.set_xlabel(x_axis) #timestamps 'Time (ms)'
+        axs.set_ylabel(y_axis) #annies 'Animal ID'
+        axs.set_zlabel(z_axis) #timeseries/signal 'dF/F GCaMP'
         return
 
 
