@@ -327,9 +327,10 @@ class fiberPhotometryCurve:
 
 
                 # finds the inter event interval between each peak
+                peak_properties[GECI] = properties
                 iei = [(self.Timestamps[GECI][peak_properties[GECI]['peaks'][i+1]] - self.Timestamps[GECI][peak_properties[GECI]['peaks'][i]]) for i in range(len(peak_properties[GECI]['peaks']) - 1)]
 
-                peak_properties[GECI] = properties
+
                 peak_properties[GECI]['inter_event_interval'] = iei
 
 
