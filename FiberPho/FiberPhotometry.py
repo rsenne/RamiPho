@@ -123,7 +123,7 @@ class fiberPhotometryCurve:
                 gcamp = self.fp_df[self.fp_df['LedState'] == 2]
                 self.Timestamps = {signal: time.values.tolist() - self.__T0__ for
                                    signal, time in
-                                   zip(['GCaMP_Isobestic', 'GCaMP'], [isobestic.Timestamp, gcamp.Timestamp])}
+                                   zip(['Isobestic_GCaMP', 'GCaMP'], [isobestic.Timestamp, gcamp.Timestamp])}
 
                 if self.__CONF1:
                     self.Signal = {"GCaMP": np.array(gcamp['Region0G']),
@@ -136,7 +136,7 @@ class fiberPhotometryCurve:
             except KeyError:
                 rcamp = self.fp_df[self.fp_df['LedState'] == 4]
                 self.Timestamps = {signal: time.values.tolist() - self.__T0__ for
-                                   signal, time in zip(['RCaMP_Isobestic', 'RCaMP'], [isobestic, rcamp])}
+                                   signal, time in zip(['Isobestic_RCaMP', 'RCaMP'], [isobestic, rcamp])}
 
                 if self.__CONF1:
                     self.Signal = {"RCaMP": np.array(rcamp['Region1R']),
@@ -311,13 +311,9 @@ class fiberPhotometryCurve:
 
                 #michelle tries to do iei
 
-                # Timestamps and peak_properties have different array  names for isobestic, changes GECI to index into timestamp array
-                if (GECI == 'Isobestic_GCaMP'):
-                    ts = 'GCaMP_Isobestic'
-                else:
-                    ts = GECI
+
                 # finds the inter event interval between each peak
-                iei = [(self.Timestamps[ts][peak_properties[GECI]['peaks'][i+1]] - self.Timestamps[ts][peak_properties[GECI]['peaks'][i]]) for i in range(len(peak_properties[GECI]['peaks'])-1)]
+                iei = [(self.Timestamps[GECI][peak_properties[GECI]['peaks'][i+1]] - self.Timestamps[GECI][peak_properties[GECI]['peaks'][i]]) for i in range(len(peak_properties[GECI]['peaks'])-1)]
 
                 peak_properties[GECI]['inter_event_interval'] = iei
 
@@ -327,7 +323,14 @@ class fiberPhotometryCurve:
                 properties['peaks'] = peaks
                 properties['areas_under_curve'] = self.calc_area(properties['left_bases'], properties['right_bases'],
                                                                  self.DF_F_Signals[GECI])
+                # michelle tries to do iei
+
+
+                # finds the inter event interval between each peak
+                iei = [(self.Timestamps[GECI][peak_properties[GECI]['peaks'][i+1]] - self.Timestamps[GECI][peak_properties[GECI]['peaks'][i]]) for i in range(len(peak_properties[GECI]['peaks']) - 1)]
+
                 peak_properties[GECI] = properties
+                peak_properties[GECI]['inter_event_interval'] = iei
 
 
         return peak_properties
