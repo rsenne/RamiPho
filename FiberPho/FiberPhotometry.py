@@ -308,14 +308,16 @@ class fiberPhotometryCurve:
                                                                  self.DF_F_Signals[GECI])
                 #populates  the peak properties dictionary with properties nested dictionary for each GECI
                 peak_properties[GECI] = properties
-
                 #michelle tries to do iei
-
-
                 # finds the inter event interval between each peak
                 iei = [(self.Timestamps[GECI][peak_properties[GECI]['peaks'][i+1]] - self.Timestamps[GECI][peak_properties[GECI]['peaks'][i]]) for i in range(len(peak_properties[GECI]['peaks'])-1)]
-
+                #adds iei  to peak properties dictionary
                 peak_properties[GECI]['inter_event_interval'] = iei
+
+                #mich tries to find latency
+                #if there's gcamp and rcamp, finds latency between peaks
+
+                #threshold for time between peaks to be considered
 
         else:
             for GECI, sig in self.DF_F_Signals.items():
@@ -324,16 +326,12 @@ class fiberPhotometryCurve:
                 properties['areas_under_curve'] = self.calc_area(properties['left_bases'], properties['right_bases'],
                                                                  self.DF_F_Signals[GECI])
                 # michelle tries to do iei
-
-
                 # finds the inter event interval between each peak
                 peak_properties[GECI] = properties
+                # finds the inter event interval between each peak
                 iei = [(self.Timestamps[GECI][peak_properties[GECI]['peaks'][i+1]] - self.Timestamps[GECI][peak_properties[GECI]['peaks'][i]]) for i in range(len(peak_properties[GECI]['peaks']) - 1)]
-
-
+                # adds iei  to peak properties dictionary
                 peak_properties[GECI]['inter_event_interval'] = iei
-
-
         return peak_properties
 
     def visual_check_peaks(self, signal):
@@ -880,12 +878,13 @@ class fiberPhotometryExperiment:
 
     #Michelle Practice
     #%%if __name__ == '__main__':
-        fc_prac = fiberPhotometryCurve('/Users/michellebuzharsky/Downloads/Test_Pho_BLA_C1_M1_FC.csv', None, None,
+        fc_prac = fiberPhotometryCurve('/Users/michellebuzharsky/Downloads/BLA_Recall_M4.csv', None, None,
                                     None,
                                     **{'treatment': 'ChR2', 'task': 'FC'})
         print(len(fc_prac.Timestamps['GCaMP']))
 
         print(fc_prac.peak_properties['GCaMP']['inter_event_interval'])
+        fc_prac.visual_check_peaks('GCaMP')
 #%%Before
         plt.plot(fc_prac.behavioral_data['DLC']['velocity'])
         plt.show()
