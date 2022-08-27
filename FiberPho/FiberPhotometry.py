@@ -318,6 +318,26 @@ class fiberPhotometryCurve:
                 #if there's gcamp and rcamp, finds latency between peaks
 
                 #threshold for time between peaks to be considered
+            latency = []
+            if ('RCaMP' in peak_properties and 'GCaMP' in peak_properties): #checks if RCaMP and GCaMP both exist
+                ind_G = 0 #starts GCaMP index count at first index 0
+                for ind_R in range(len(peak_properties['RCaMP']['peaks'])):
+                    time_RCaMP = peak_properties['RCaMP']['peaks'][ind_R] #index of when peak happens for each peak in RCaMP
+                    while ind_G<len(peak_properties['GCaMP']['peaks']): #while there's still indeces left in GCaMP array
+                        time_GCaMP = peak_properties['GCaMP']['peaks'][ind_G]  # index of when peak happens for each peak in RCaMP
+                        if time_GCaMP>time_RCaMP: # if GCaMP peak index follows RCaMP (which it should for latency)
+                            if time_GCaMP-time_RCaMP <= 10: #if the difference is smaller than 10
+                                #add time to latency
+                                latency.append(self.Timestamps['GCaMP'][time_GCaMP]-self.Timestamps['RCaMP'][time_RCaMP])
+                                #augment GCaMP to next index so it's not reused
+                                ind_G +=1
+                                #break out of while loop, move to next RCaMP entry
+                                break
+                            else: #if the difference is greater than 10, then move on to next RCaMP entry
+                                break
+                        else: #GCaMP index precedes RCaMP, need to move it up
+                            ind_G +=1 #increase index to the next one
+
 
         else:
             for GECI, sig in self.DF_F_Signals.items():
@@ -332,6 +352,33 @@ class fiberPhotometryCurve:
                 iei = [(self.Timestamps[GECI][peak_properties[GECI]['peaks'][i+1]] - self.Timestamps[GECI][peak_properties[GECI]['peaks'][i]]) for i in range(len(peak_properties[GECI]['peaks']) - 1)]
                 # adds iei  to peak properties dictionary
                 peak_properties[GECI]['inter_event_interval'] = iei
+
+
+
+            latency = []
+            if ('RCaMP' in peak_properties and 'GCaMP' in peak_properties):  # checks if RCaMP and GCaMP both exist
+                ind_G = 0  # starts GCaMP index count at first index 0
+                for ind_R in range(len(peak_properties['RCaMP']['peaks'])):
+                    time_RCaMP = peak_properties['RCaMP']['peaks'][
+                        ind_R]  # index of when peak happens for each peak in RCaMP
+                    while ind_G < len(
+                            peak_properties['GCaMP']['peaks']):  # while there's still indeces left in GCaMP array
+                        time_GCaMP = peak_properties['GCaMP']['peaks'][ind_G]  # index of when peak happens for each peak in RCaMP
+                        if time_GCaMP > time_RCaMP:  # if GCaMP peak index follows RCaMP (which it should for latency)
+                            if time_GCaMP - time_RCaMP <= 10:  # if the difference is smaller than 10
+                                # add time to latency
+                                latency.append(
+                                    self.Timestamps['GCaMP'][time_GCaMP] - self.Timestamps['RCaMP'][time_RCaMP])
+                                # augment GCaMP to next index so it's not reused
+                                ind_G += 1
+                                # break out of while loop, move to next RCaMP entry
+                                break
+                            else:  # if the difference is greater than 10, then move on to next RCaMP entry
+                                break
+                        else:  # GCaMP index precedes RCaMP, need to move it up
+                            ind_G += 1  # increase index to the next one
+
+        peak_properties['latency']= latency
         return peak_properties
 
     def visual_check_peaks(self, signal):
@@ -884,7 +931,16 @@ class fiberPhotometryExperiment:
         print(len(fc_prac.Timestamps['GCaMP']))
 
         print(fc_prac.peak_properties['GCaMP']['inter_event_interval'])
-        fc_prac.visual_check_peaks('GCaMP')
+        #fc_prac.visual_check_peaks('GCaMP')
+
+        # %%
+        """dual_prac = fiberPhotometryCurve('/Users/michellebuzharsky/Downloads/dual_c2_m5_FC.csv', None, None,
+                                    None,
+                                    **{'treatment': 'ChR2', 'task': 'FC'})"""
+        dual_prac = fiberPhotometryCurve('/Users/michellebuzharsky/Downloads/dual_opto_shock_recall_m2.csv', None, None,
+                                         None,
+                                         **{'treatment': 'ChR2', 'task': 'FC'})
+
 #%%Before
         plt.plot(fc_prac.behavioral_data['DLC']['velocity'])
         plt.show()
