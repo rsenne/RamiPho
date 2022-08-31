@@ -857,7 +857,7 @@ class fiberPhotometryExperiment:
         :param group: str, desired group to grab data from
         :param curve: str, type of curve
         :param time_length: int, desired length of time to slice and make timeseries from
-        :return: timeseries, n x m array of n animals in group with respective curve from time[0:time_length]
+        :return: timeseries, matrix of n animals in group with respective curve from time[0:time_length]
         """
         min_time = np.min(
             [len(x) for x in [t.Timestamps[curve].tolist() for t in next(iter(getattr(self, group).values()))]]) #shortest timeseries in group
@@ -869,14 +869,14 @@ class fiberPhotometryExperiment:
         return timeseries
 
 
-    def make_3d_timeseries(self, timeseries, timestamps, x_axis, y_axis, z_axis, **kwargs):
+    def make_3d_timeseries(self, timeseries, timestamps, x_axis='Time (s)', y_axis='Animal ID', z_axis='dF/F', **kwargs):
         """
-
-        :param timeseries: n x m matrix, n animals each with signal array of length m, returned from create_timeseries()
+        Plots a 3d plot of each animal's dF/F GCaMP trace across time
+        :param timeseries: array of n animals each with signal of length m, returned from create_timeseries()
         :param timestamps: timestamps array of length m
-        :param x_axis: str, x-axis label
-        :param y_axis: str, y-axis label
-        :param z_axis: str, z-axis label
+        :param x_axis: str, x-axis Time (s)
+        :param y_axis: str, y-axis Animal ID
+        :param z_axis: str, z-axis dF/F GCaMP
         :param kwargs: ??
         :return: empty
         """
@@ -896,11 +896,13 @@ class fiberPhotometryExperiment:
         axs = plt.axes(projection="3d")
         for j in range(len(timeseries)):
             axs.plot(timestamps, y_coordinate_matrix[j], timeseries[j]) #add back **kwargs?
-        axs.set_xlabel(x_axis) #timestamps 'Time (ms)'
+        axs.set_xlabel(x_axis) #timestamps 'Time (s)'
         axs.set_ylabel(y_axis) #annies 'Animal ID'
         axs.set_zlabel(z_axis) #timeseries/signal 'dF/F GCaMP'
         return
 
+    def plot_stats(self):
+        #compare stats between groups
 
     # Practice things
     # engram_exp = fiberPhotometryExperiment(engram_recall_1, engram_recall_2, sham_recall_1, sham_recall_2)
