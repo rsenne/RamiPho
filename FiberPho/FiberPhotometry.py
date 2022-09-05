@@ -70,6 +70,7 @@ class fiberPhotometryCurve:
             # puts freeze vector array and inds from the process anymaze function into the Anymaze dictionary
             self.behavioral_data['Anymaze']['freeze_vector'] = freeze_vector
             self.behavioral_data['Anymaze']['end_freezing'] = inds  # ends of freezing  bouts
+            self.behavioral_data['Anymaze']['anymaze_df'] = anymaze_df
 
         if hasattr(self, 'manual_off_set'):
             self.fp_df = self.fp_df[int(self.manual_off_set // self._sample_time_):].reset_index()
@@ -294,6 +295,7 @@ class fiberPhotometryCurve:
                 properties['peaks'] = peaks
                 properties['areas_under_curve'] = self.calc_area(properties['left_bases'], properties['right_bases'],
                                                                  self.DF_F_Signals[GECI])
+                properties['widths'] *= self._sample_time_
                 peak_properties[GECI] = properties
         else:
             for GECI, sig in self.DF_F_Signals.items():
@@ -301,6 +303,7 @@ class fiberPhotometryCurve:
                 properties['peaks'] = peaks
                 properties['areas_under_curve'] = self.calc_area(properties['left_bases'], properties['right_bases'],
                                                                  self.DF_F_Signals[GECI])
+                properties['widths'] *= self._sample_time_
                 peak_properties[GECI] = properties
         return peak_properties
 
@@ -366,9 +369,10 @@ class fiberPhotometryCurve:
         if hasattr(self, 'OffSet'):
             bins = [x + self.OffSet for x in bins]
         per_freezing = pd.DataFrame()
-        self.anymaze_file['bin'] = pd.cut(self.anymaze_file.seconds, bins, include_lowest=True)
-        self.anymaze_file = self.anymaze_file.dropna()
-        unique_bins = self.anymaze_file.bin.unique()
+        self.behavioral_data['Anymaze']['anymaze_df']['bin'] = pd.cut(
+            self.behavioral_data['Anymaze']['anymaze_df'].seconds, bins, include_lowest=True)
+        anymaze_df = self.behavioral_data['Anymaze']['anymaze_df'].dropna()
+        unique_bins = anymaze_df.bin.unique()
 
         freeze_time = np.zeros(shape=(len(bins) - 1,))
         if len(unique_bins) < len(bins) - 1:
@@ -380,7 +384,7 @@ class fiberPhotometryCurve:
                 freeze_time = np.zeros(shape=(len(bins) - 1,))
             else:
                 # print(i)
-                df = self.anymaze_file[self.anymaze_file['bin'] == bin].reset_index()
+                df = anymaze_df[anymaze_df['bin'] == bin].reset_index()
                 if df.at[0, 'Freezing'] == 0:
                     even = True
                 else:
@@ -527,17 +531,20 @@ class fiberPhotometryCurve:
 
     def calc_avg_peak_props(self, props=None):
         if props is None:
-            props = ['widths', 'areas_under_curve', 'peak_heights']
+            props = ['widths', 'areas_under_curve', 'peak_heights', 'total_events']
         condensed_props = {}
         for signal in self.peak_properties:
+            self.peak_properties[signal]['total_events'] = len(self.peak_properties[signal]['peak_heights'])
             condensed_props.update(
                 {signal: {"average" + "_" + prop: np.average(self.peak_properties[signal][prop]) for prop in props}})
         setattr(self, "condensed_stats", condensed_props)
         return condensed_props
 
-    def reset_peak_params(self, crit_width, curve_type):
+    def reset_peak_params(self, crit_width, curve_type, props=None):
         deletion_list = [i for i, j in enumerate(self.peak_properties[curve_type]['widths']) if j < crit_width]
-        for prop in self.peak_properties[curve_type]:
+        if props is None:
+            props = ['widths', 'areas_under_curve', 'peak_heights']
+        for prop in props:
             self.peak_properties[curve_type][prop] = np.delete(self.peak_properties[curve_type][prop], deletion_list)
         return
 
@@ -689,15 +696,20 @@ class fiberPhotometryExperiment:
         sample1 = [x.condensed_stats[curve]['average' + '_' + metric] for x in s1]
         sample2 = [x.condensed_stats[curve]['average' + '_' + metric] for x in s2]
         stat, pval = test(sample1, sample2)
-        return stat, pval
+        return stat, pval, sample1, sample2
 
     def raster(self, group, curve, a, b, colormap):
-        sb.set()
+        fig, ax = plt.subplots()
         vector_array = np.array(
-            [vec.DF_F_Signals[curve][a:b].tolist() for vec in next(iter(getattr(self, group).values()))])
-        sb.heatmap(vector_array, cmap=colormap)
+            [vec.DF_Z_Signals[curve][a:b].tolist() for vec in next(iter(getattr(self, group).values()))])
+        raster = sb.heatmap(vector_array, vmin=0, vmax=8, cmap=colormap, ax=ax,
+                            cbar_kws={'label': r'z-scored $\frac{dF}{F}$ (%)', 'location': 'left'})
+        raster.xaxis.set_ticks(np.arange(0, 3920, 560), [0, 60, 120, 180, 240, 300, 360])
+        raster.yaxis.set_ticks([])
+        plt.title('No Shock')
+        plt.xlabel('Time (s)')
         plt.show()
-        return
+        return fig
 
     def st_event_triggered_average(self, curve, event_time, window, group, plot=False, timepoint=True):
         time = [time.Timestamps[curve].tolist() for time in next(iter(getattr(self, group).values()))]
@@ -734,7 +746,7 @@ class fiberPhotometryExperiment:
             plt.show()
         return averaged_trace, average_time[index_left_bound:index_right_bound], ci
 
-    def mt_event_triggered_average(self, curve, event_times, window, group, plot=False, timepoint=False):
+    def mt_event_triggered_average(self, curve, event_times, window, group, ci_type='t', shuffle=False, timepoint=False):
         max_ind = np.min(
             [len(x) for x in [t.Timestamps[curve].tolist() for t in next(iter(getattr(self, group).values()))]])
         time_array = np.array(
@@ -745,6 +757,10 @@ class fiberPhotometryExperiment:
         ind_plus = window / sample_time
         vector_array = np.array(
             [trace.DF_F_Signals[curve][0:max_ind].tolist() for trace in next(iter(getattr(self, group).values()))])
+        if shuffle:
+            vector_array_copy = vector_array.T
+            np.random.shuffle(vector_array_copy)
+            vector_array = vector_array_copy.T
         inds = []
         if timepoint:
             for i in range(len(event_times)):
@@ -767,20 +783,46 @@ class fiberPhotometryExperiment:
             mt_eta.append(eta)
         mt_eta = np.array(mt_eta)
         av_tr = np.average(mt_eta, axis=0)
-        ci = 1.96 * np.std(mt_eta, axis=0) / np.sqrt(np.shape(mt_eta)[0])
+        if ci_type == 't':
+            ci = 2.58 * np.std(mt_eta, axis=0) / np.sqrt(np.shape(mt_eta)[0])
+        elif ci_type == 'bs':
+            ci = self.bootstrap_ci(mt_eta, niter=1000)
+        else:
+            ci = 0
         time_int = np.linspace(-window / 2, window, len(av_tr))
         return av_tr, mt_eta, time_int, ci
 
     # test this function
-    def bootstrap(self, inds, average_trace, window, niter):
-        average_trace_copy = average_trace
-        actual_values = [max(average_trace_copy[i:i + window] for i in inds)]
+    def bootstrap(self, curve, event_times, window, group, niter):
         avg_max = []
         for i in range(niter):
-            np.random.shuffle(average_trace)
-            max_average = np.average([max(average_trace[i:i + window] for i in inds)])
-            avg_max.append(max_average)
-        return avg_max, actual_values
+            av_tr, mt_eta, time_int, ci = self.mt_event_triggered_average(curve, event_times, window, group,
+                                                                          shuffle=True, timepoint=False)
+            maxs = np.max(np.average(mt_eta))
+            avg_max.append(maxs)
+        return avg_max  # actual_values
+
+    def bootstrap1(self, curve, window, group, niter):
+        avg_max = []
+        for i in range(niter):
+            rng = np.random.default_rng(12345)
+            rints = rng.integers(low=0, high=315, size=4)
+            av_tr, mt_eta, time_int, ci = self.mt_event_triggered_average(curve, [rints], window, group, shuffle=True,
+                                                                          timepoint=True)
+            maxs = np.max(np.average(mt_eta))
+            avg_max.append(maxs)
+        return avg_max  # actual_values
+
+    def bootstrap_ci(self, vector_array, sig, niter=1000):
+        rng = np.random.default_rng()
+        random_bst_vec = rng.integers(low=0, high=int(np.size(vector_array, 0)), size=niter)
+        bootstrap_mat = vector_array[random_bst_vec]
+        print(bootstrap_mat)
+        sort_boot_strap_mat = np.sort(bootstrap_mat, axis=0)
+        ci_low = sort_boot_strap_mat[26, :]
+        ci_up = sort_boot_strap_mat[975, :]
+        ci_lower_upper = np.percentile(bootstrap_mat, [sig/2, 100-(sig/2)], axis=0)
+        return ci_lower_upper, ci_low, ci_up
 
     def plot_st_eta(self, curve, event_time, window, *args):
         for arg in args:
@@ -792,28 +834,28 @@ class fiberPhotometryExperiment:
             plt.show()
         return
 
-    def plot_mt_eta(self, curve, event_times, window, *args):
+    def plot_mt_eta(self, curve, event_times, window, timepoint=True, *args):
         fig, ax = plt.subplots(1, 1)
-        ax.axvline(0, linestyle='--', color='black')
         ax.spines['top'].set_visible(False)
         ax.spines['right'].set_visible(False)
         plt.xlabel('Time (s)')
         plt.ylabel(r'$\frac{dF}{F}$ (%)')
         for i in range(len(args)):
             if len(event_times) == 1:
-                av_tr, mt_eta, av_ti, ci = self.mt_event_triggered_average(curve, event_times, window, args[i])
+                av_tr, mt_eta, av_ti, ci = self.mt_event_triggered_average(curve, event_times, window, timepoint, args[i])
                 ax.plot(av_ti, av_tr)
-                ax.fill_between(av_ti, (av_tr - ci), (av_tr + ci), alpha=0.1)
+                ax.fill_between(av_ti, (av_tr - ci), (av_tr + ci), alpha=0.1, label=None)
             else:
-                av_tr, mt_eta, av_ti, ci = self.mt_event_triggered_average(curve, event_times[i], window, args[i])
+                av_tr, mt_eta, av_ti, ci = self.mt_event_triggered_average(curve, event_times[i], window, timepoint, args[i])
                 ax.plot(av_ti, av_tr)
-                ax.fill_between(av_ti, (av_tr - ci), (av_tr + ci), alpha=0.1)
-        return
+                ax.fill_between(av_ti, (av_tr - ci), (av_tr + ci), alpha=0.1, label=None)
+        ax.axvline(0, linestyle='--', color='black')
+        return fig, ax
 
     def percent_freezing(self, bins, g1, g2):
         freeze_df = pd.DataFrame(columns=['Animal', 'Group'])
+        i = 0
         for g in (g1, g2):
-            i = 0
             for animal in list(getattr(self, g).values())[0]:
                 animal.calc_binned_freezing(bins)
                 if hasattr(animal, 'ID'):
@@ -848,4 +890,3 @@ def make_3d_timeseries(timeseries, timestamps, x_axis, y_axis, z_axis, **kwargs)
     axs.set_ylabel(y_axis)
     axs.set_zlabel(z_axis)
     return
-
