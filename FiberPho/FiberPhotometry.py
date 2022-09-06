@@ -7,7 +7,7 @@ import pandas as pd
 import scipy.stats
 import seaborn as sb
 import statsmodels.api as sm
-import FiberPho.b_spline
+#import FiberPho.b_spline
 from scipy import sparse
 from scipy.integrate import simpson
 from scipy.interpolate import splrep, splev
@@ -52,25 +52,29 @@ class fiberPhotometryCurve:
 
         # mb trying to do behavioral dict of dicts
         # if there's a DLC file, apply calc kinematics on that file and then put the velocity and accel column as keys
-        self.behavioral_data = {}  # behavioral data dictionary
-        if hasattr(self, 'DLC_file'):  # if there's a DLC file key word arg
-            self.behavioral_data['DLC'] = {}  # creates nested dictionary within behavioral data dictionary
-            # passes csv DLC file through calc_kinematics function, stores it in pandas df
-            df = self.calc_kinematics(self.DLC_file)
-            # creates a numpy array as a value for the velocity and acceleration, taken from velocity and
-            # acceleration columns of df
+            # mb trying to do behavioral dict of dicts
+        self.behavioral_data = {} #behavioral data dictionary
+        if hasattr(self, 'DLC_file'): #if there's a DLC file key word arg
+            self.behavioral_data['DLC'] = {} #creates nested dictionary within behavioral data dictionary
+
+            #if parameters  of calc_kinematics change, pass them through calc kinematics
+            #passes csv DLC file through calc_kinematics function, stores it in pandas df
+            df = self.calc_kinematics(getattr(self, 'DLC_file'), getattr(self, 'bps', None), getattr(self, 'interpolate', True), getattr(self, 'int_f', 100), getattr(self, 'threshold', .6))
+
+            #creates a numpy array as a value for the velocity and acceleration, taken from velocity and acceleration columns of df
             self.behavioral_data['DLC']['velocity'] = df['velocity'].to_numpy()
             self.behavioral_data['DLC']['acceleration'] = df['acceleration'].to_numpy()
+            # add kwargs
         if hasattr(self, 'anymaze_file'):  # if there's an anymaze file key word arg
             self.behavioral_data['Anymaze'] = {}  # creates nested dictionary within behavioral data dictionary
-            # passes csv DLC file through calc_kinematics function, stores it in pandas df
-            df = pd.read_csv(self.anymaze_file)
-            anymaze_df, freeze_vector, inds = self.process_anymaze(df,
-                                                                   self.fp_df.Timestamp[self.fp_df['LedState'] == 1])
-            # puts freeze vector array and inds from the process anymaze function into the Anymaze dictionary
+            # passes csv anymzze file through process_anymaze method, stores it in pandas df
+            df = pd.read_csv(getattr(self, 'anymaze_file'))
+            anymaze_df, freeze_vector, inds_start, inds_end =  self.process_anymaze(df, self.Timestamps['GCaMP'])
+            #puts freeze vector array and start/end freezing inds from the process anymaze function into the Anymaze dictionary
             self.behavioral_data['Anymaze']['freeze_vector'] = freeze_vector
-            self.behavioral_data['Anymaze']['end_freezing'] = inds  # ends of freezing  bouts
-            self.behavioral_data['Anymaze']['anymaze_df'] = anymaze_df
+
+            self.behavioral_data['Anymaze']['start_freezing'] = inds_start #start of freezing bouts
+            self.behavioral_data['Anymaze']['end_freezing'] = inds_end #ends of freezing bouts
 
         if hasattr(self, 'manual_off_set'):
             self.fp_df = self.fp_df[int(self.manual_off_set // self._sample_time_):].reset_index()
@@ -150,7 +154,7 @@ class fiberPhotometryCurve:
                 gcamp = self.fp_df[self.fp_df['LedState'] == 2]
                 self.Timestamps = {signal: time.values.tolist() - self.__T0__ for
                                    signal, time in
-                                   zip(['GCaMP_Isobestic', 'GCaMP'], [isobestic.Timestamp, gcamp.Timestamp])}
+                                   zip(['Isobestic_GCaMP', 'GCaMP'], [isobestic.Timestamp, gcamp.Timestamp])}
 
                 if self.__CONF1:
                     self.Signal = {"GCaMP": np.array(gcamp['Region0G']),
@@ -163,7 +167,7 @@ class fiberPhotometryCurve:
             except KeyError:
                 rcamp = self.fp_df[self.fp_df['LedState'] == 4]
                 self.Timestamps = {signal: time.values.tolist() - self.__T0__ for
-                                   signal, time in zip(['RCaMP_Isobestic', 'RCaMP'], [isobestic, rcamp])}
+                                   signal, time in zip(['Isobestic_RCaMP', 'RCaMP'], [isobestic, rcamp])}
 
                 if self.__CONF1:
                     self.Signal = {"RCaMP": np.array(rcamp['Region1R']),
@@ -209,7 +213,7 @@ class fiberPhotometryCurve:
         return True
 
     @staticmethod
-    def _als_detrend(y, lam=10e7, p=0.01, niter=100):
+    def _als_detrend(y, lam=10e7, p=0.01, niter=100): #asymmetric least squares smoothing method
         L = len(y)
         D = sparse.diags([1, -2, 1], [0, -1, -2], shape=(L, L - 2))
         D = lam * D.dot(D.transpose())  # Precompute this term since it does not depend on `w`
@@ -225,6 +229,13 @@ class fiberPhotometryCurve:
 
     @staticmethod
     def smooth(signal, kernel, visual_check=False):
+        """
+
+        :param signal: array of signal of interest (GCaMP, Isobestic_GCaMP, etc)
+        :param kernel: int length of uniform filter
+        :param visual_check: boolean for plotting original vs smoothed signal
+        :return: array smoothed by 1D uniform filter
+        """
         smooth_signal = uniform_filter1d(signal, kernel)
         if visual_check:
             plt.figure()
@@ -258,9 +269,9 @@ class fiberPhotometryCurve:
         areas = np.asarray([simpson(timeseries[i:j]) for i, j in zip(l_index, r_index)])
         return areas
 
-    def process_data(self):
-        signals = [signal for signal in self.Signal.values()]
-        baseline_corr_signal = [self._als_detrend(sig) for sig in signals]
+    def process_data(self): #correct baseline, smoothed with uniform filter
+        signals = [signal for signal in self.Signal.values()] #list of raw signals
+        baseline_corr_signal = [self._als_detrend(sig) for sig in signals] #list of baseline corrected signals
         df_f_signals = [self._df_f(s, kind='standard') for s in baseline_corr_signal]
         df_z_signals = [self._df_f(s, kind='std') for s in baseline_corr_signal]
         for i in range(len(df_f_signals)):
@@ -287,27 +298,108 @@ class fiberPhotometryCurve:
         return res_fit
 
     def find_signal(self, neg=False):
+        """
+
+        :param neg: ?
+        :return: a peak property array based on scipy find_peak function
+        """
+
+        #creates empty peak properties dictionary
         peak_properties = {}
         if not neg:
             for GECI, sig in self.DF_F_Signals.items():
+                #returns array of indices of  peaks, and properties dictionary
                 peaks, properties = find_peaks(sig, height=1.0, distance=131, width=25,
-                                               rel_height=0.95)  # height=1.0, distance=130, prominence=0.5, width=25, rel_height=0.90)
+                                               rel_height=0.50)  # height=1.0, distance=130, prominence=0.5, width=25, rel_height=0.90)
+                #adds array  of peak indices to properties dicttionary
                 properties['peaks'] = peaks
+                #calculates area under the curve for each peak and adds to properties dictionary
                 properties['areas_under_curve'] = self.calc_area(properties['left_bases'], properties['right_bases'],
                                                                  self.DF_F_Signals[GECI])
+
+                #populates  the peak properties dictionary with properties nested dictionary for each GECI
                 properties['widths'] *= self._sample_time_
                 peak_properties[GECI] = properties
+                #michelle tries to do iei
+                # finds the inter event interval between each peak
+                iei = [(self.Timestamps[GECI][peak_properties[GECI]['peaks'][i+1]] - self.Timestamps[GECI][peak_properties[GECI]['peaks'][i]]) for i in range(len(peak_properties[GECI]['peaks'])-1)]
+                #adds iei  to peak properties dictionary
+                peak_properties[GECI]['inter_event_interval'] = iei
+
+                #mich tries to find latency
+                #if there's gcamp and rcamp, finds latency between peaks
+
+                #threshold for time between peaks to be considered
+            latency = []
+            if ('RCaMP' in peak_properties and 'GCaMP' in peak_properties): #checks if RCaMP and GCaMP both exist
+                ind_G = 0 #starts GCaMP index count at first index 0
+                for ind_R in range(len(peak_properties['RCaMP']['peaks'])):
+                    time_RCaMP = peak_properties['RCaMP']['peaks'][ind_R] #index of when peak happens for each peak in RCaMP
+                    while ind_G<len(peak_properties['GCaMP']['peaks']): #while there's still indeces left in GCaMP array
+                        time_GCaMP = peak_properties['GCaMP']['peaks'][ind_G]  # index of when peak happens for each peak in RCaMP
+                        if time_GCaMP>time_RCaMP: # if GCaMP peak index follows RCaMP (which it should for latency)
+                            if time_GCaMP-time_RCaMP <= 10: #if the difference is smaller than 10
+                                #add time to latency
+                                latency.append(self.Timestamps['GCaMP'][time_GCaMP]-self.Timestamps['RCaMP'][time_RCaMP])
+                                #augment GCaMP to next index so it's not reused
+                                ind_G +=1
+                                #break out of while loop, move to next RCaMP entry
+                                break
+                            else: #if the difference is greater than 10, then move on to next RCaMP entry
+                                break
+                        else: #GCaMP index precedes RCaMP, need to move it up
+                            ind_G +=1 #increase index to the next one
+
+
         else:
             for GECI, sig in self.DF_F_Signals.items():
-                peaks, properties = find_peaks(-sig, height=1.0, distance=131, width=25, rel_height=0.95)
+                peaks, properties = find_peaks(-sig, height=1.0, distance=131, width=25, rel_height=0.50)
                 properties['peaks'] = peaks
                 properties['areas_under_curve'] = self.calc_area(properties['left_bases'], properties['right_bases'],
                                                                  self.DF_F_Signals[GECI])
+                # michelle tries to do iei
+                # finds the inter event interval between each peak
                 properties['widths'] *= self._sample_time_
                 peak_properties[GECI] = properties
+                # finds the inter event interval between each peak
+                iei = [(self.Timestamps[GECI][peak_properties[GECI]['peaks'][i+1]] - self.Timestamps[GECI][peak_properties[GECI]['peaks'][i]]) for i in range(len(peak_properties[GECI]['peaks']) - 1)]
+                # adds iei  to peak properties dictionary
+                peak_properties[GECI]['inter_event_interval'] = iei
+
+
+
+            latency = []
+            if ('RCaMP' in peak_properties and 'GCaMP' in peak_properties):  # checks if RCaMP and GCaMP both exist
+                ind_G = 0  # starts GCaMP index count at first index 0
+                for ind_R in range(len(peak_properties['RCaMP']['peaks'])):
+                    time_RCaMP = peak_properties['RCaMP']['peaks'][
+                        ind_R]  # index of when peak happens for each peak in RCaMP
+                    while ind_G < len(
+                            peak_properties['GCaMP']['peaks']):  # while there's still indeces left in GCaMP array
+                        time_GCaMP = peak_properties['GCaMP']['peaks'][ind_G]  # index of when peak happens for each peak in RCaMP
+                        if time_GCaMP > time_RCaMP:  # if GCaMP peak index follows RCaMP (which it should for latency)
+                            if time_GCaMP - time_RCaMP <= 10:  # if the difference is smaller than 10
+                                # add time to latency
+                                latency.append(
+                                    self.Timestamps['GCaMP'][time_GCaMP] - self.Timestamps['RCaMP'][time_RCaMP])
+                                # augment GCaMP to next index so it's not reused
+                                ind_G += 1
+                                # break out of while loop, move to next RCaMP entry
+                                break
+                            else:  # if the difference is greater than 10, then move on to next RCaMP entry
+                                break
+                        else:  # GCaMP index precedes RCaMP, need to move it up
+                            ind_G += 1  # increase index to the next one
+
+        peak_properties['latency']= latency
         return peak_properties
 
     def visual_check_peaks(self, signal):
+        """
+        Plots object's df_f signal overlayed with peaks
+        :param signal: string of which signal to check
+        :return:
+        """
         if hasattr(self, "peak_properties"):
             plt.figure()
             plt.plot(self.DF_F_Signals[signal])
@@ -325,11 +417,17 @@ class fiberPhotometryCurve:
         return
 
     def process_anymaze(self, anymaze_file, timestamps):
+        """
+        :param anymaze_file: panda dataframe of anymaze data
+        :param timestamps: array of timestamps
+        :return: anymaze file, binary freeze vector, inds_start, inds_end (lists of start/end index of freezing bouts)
+        """
         timestamps.reset_index(drop=True, inplace=True)
         timestamps = timestamps.to_numpy() - timestamps[0]
         length = len(timestamps)
         times = anymaze_file.Time.str.split(':')
         if len(times[0]) == 3:
+
             for i in range(len(times)):
                 anymaze_file.loc[i, 'seconds'] = (float(times[i][1]) * 60 + float(times[i][2]))
         else:
@@ -351,18 +449,19 @@ class fiberPhotometryCurve:
                 except KeyError:
                     t2 = anymaze_file.seconds.iloc[-1]
                 try:
-                    binary_freeze_vec[np.where(timestamps > t1)[0][0]:np.where(timestamps < t2)[0][-1]] = 1
+                    binary_freeze_vec[np.where(timestamps > t1)[0][0]:np.where(timestamps < t2)[0][-1] + 1] = 1 #!!added +1 because end point of slicing is exclusive
+                    # print(np.where(timestamps > t1)[0][0], np.where(timestamps < t2)[0][-1])
                 except IndexError:
-                    if t1 == t2:
-                        binary_freeze_vec[np.where(timestamps == t1)] = 0
-                    else:
-                        binary_freeze_vec[np.where(timestamps > t1)[0][0]:np.where(timestamps < t2)[0][-1]] = 1
+                    binary_freeze_vec[np.where(timestamps > t1)[0][0]:np.where(timestamps < t2)[0][-1] + 1] = 1
                 i += 1
             else:
                 i += 1
-        time_val_0 = [anymaze_file.seconds[i] for i in range(1, len(anymaze_file)) if anymaze_file.Freezing[i] == 0]
-        inds = [np.argmin(np.abs(timestamps - time_val)) for time_val in time_val_0]  # vector of end of freezing bouts
-        return anymaze_file, binary_freeze_vec, inds
+        time_val_0 = [anymaze_file.seconds[i] for i in range(1, len(anymaze_file)) if anymaze_file.Freezing[i] == 0] #time when non-freezing bout starts
+        time_val_1 = [anymaze_file.seconds[i] for i in range(1, len(anymaze_file)) if anymaze_file.Freezing[i] == 1] #time when freezing bout starts
+        #inds_end = [np.argmin(np.abs(timestamps - time_val)) for time_val in time_val_0] #vector of end of freezing bouts
+        inds_end = [int(np.argwhere(timestamps <= time_val)[-1]) for time_val in time_val_0] #list of end indices of freezing bouts
+        inds_start = [int(np.argwhere(timestamps >= time_val)[0]) for time_val in time_val_1] #list of start indices of freezing bouts
+        return anymaze_file, binary_freeze_vec, inds_start, inds_end
 
     def calc_binned_freezing(self, bins):
         bin_time = np.diff(bins)[0]
@@ -420,8 +519,8 @@ class fiberPhotometryCurve:
 
     def calc_kinematics(self, DLC_file, bps=None, interpolate=True, int_f=100, threshold=.6):
 
+        
         """
-
         :param DLC_file: DLC-processed csv file
         :param bps: array of labeled body parts
         :param interpolate: boolean expression, interpolates x and y coordinates for a variable number of frames whose probabilities are less than threshold amount
@@ -575,7 +674,7 @@ class fiberPhotometryCurve:
         indice_extrema = np.where(np.diff(rolled_average) < 0)[0] - 1
         return indice_extrema
 
-
+#%%
 class fiberPhotometryExperiment:
     def __init__(self, *args):
         self.treatment = {}
@@ -699,6 +798,16 @@ class fiberPhotometryExperiment:
         return stat, pval, sample1, sample2
 
     def raster(self, group, curve, a, b, colormap):
+
+        """
+        Plots a heatmap of specified signal over time interval [a:b]
+        :param group: str, desired group to plot
+        :param curve: str, type of signal to plot (GCaMP or Isobestic_GCaMP)
+        :param a: int, start index
+        :param b: int, end index
+        :param colormap: str, matplotlib color map scheme
+        :return:
+        """
         fig, ax = plt.subplots()
         vector_array = np.array(
             [vec.DF_Z_Signals[curve][a:b].tolist() for vec in next(iter(getattr(self, group).values()))])
@@ -844,25 +953,77 @@ class fiberPhotometryExperiment:
                 i += 1
         return freeze_df
 
+    def create_timeseries(self, group, curve='GCaMP', time_length=0):
+        """
+        Creates array of specified signals for traces in each group, return value used in make_3d_timeseries()
+        Maybe incorporate with make_3d_timeseries, or just add to the front of method
+        :param group: str, desired group to grab data from
+        :param curve: str, type of curve
+        :param time_length: int, desired length of time to slice and make timeseries from
+        :return: timeseries, matrix of n animals in group with respective curve from time[0:time_length]
+        """
+        min_time = np.min(
+            [len(x) for x in [t.Timestamps[curve].tolist() for t in next(iter(getattr(self, group).values()))]]) #shortest timeseries in group
+        if time_length == 0: #did not pass in desired time_length, default to min_time within group
+            time_length = min_time
+        elif time_length > min_time: #desired time_length longer than min_time
+            raise Exception("Desired time length is longer than at least one trace within this group, consider lowering desired time length!")
+        timeseries = np.array([series for series in [t.DF_F_Signals[curve][0:time_length].tolist() for t in next(iter(getattr(self, group).values()))]])
+        return timeseries
 
-def make_3d_timeseries(timeseries, timestamps, x_axis, y_axis, z_axis, **kwargs):
-    sb.set()
-    if type(timeseries) != np.array:
-        timeseries = np.asarray(timeseries)
-    if type(timestamps) != np.array:
-        timestamps = np.asarray(timestamps)
-    if np.shape(timeseries) != np.shape(timestamps):
-        raise ValueError(
-            "Shape of timeseries and timestamp data do not match! Perhaps, try transposing? If not, you may have "
-            "concatenated incorrectly.")
-    y_coordinate_matrix = np.zeros(shape=(np.shape(timeseries)[0], np.shape(timeseries)[1]))
-    for i in range(len(timeseries)):
-        y_coordinate_matrix[i, :np.shape(timeseries)[1]] = i + 1
-    plt.figure()
-    axs = plt.axes(projection="3d")
-    for i in reversed(range(len(timeseries))):
-        axs.plot(timestamps[i], y_coordinate_matrix[i], timeseries[i], **kwargs)
-    axs.set_xlabel(x_axis)
-    axs.set_ylabel(y_axis)
-    axs.set_zlabel(z_axis)
-    return
+
+    def make_3d_timeseries(self, timeseries, timestamps, x_axis='Time (s)', y_axis='Animal ID', z_axis='dF/F', **kwargs):
+        """
+        Plots a 3d plot of each animal's dF/F GCaMP trace across time
+        :param timeseries: array of n animals each with signal of length m, returned from create_timeseries()
+        :param timestamps: timestamps array of length m
+        :param x_axis: str, x-axis Time (s)
+        :param y_axis: str, y-axis Animal ID
+        :param z_axis: str, z-axis dF/F GCaMP
+        :param kwargs: ??
+        :return: empty
+        """
+        sb.set()
+        if not isinstance(timeseries, np.array):
+            timeseries = np.asarray(timeseries)
+        if not isinstance(timestamps, np.array):
+            timestamps = np.asarray(timestamps)
+        if np.shape(timeseries)[1] != np.shape(timestamps)[0]: #check if timeseries and timestamps match
+            raise ValueError(
+                "Shape of timeseries and timestamp data do not match! Perhaps, try transposing? If not, you may have "
+                "concatenated incorrectly.")
+        y_coordinate_matrix = np.zeros(shape=(np.shape(timeseries)[0], np.shape(timeseries)[1])) #n by m zero matrix
+        for i in range(len(timeseries)):
+            y_coordinate_matrix[i] = i + 1 #fill rows with 1s, 2s, 3s, down to n. maybe adjust to scale down so lines are closer
+        plt.figure()
+        axs = plt.axes(projection="3d")
+        for j in range(len(timeseries)):
+            axs.plot(timestamps, y_coordinate_matrix[j], timeseries[j]) #add back **kwargs?
+        axs.set_xlabel(x_axis) #timestamps 'Time (s)'
+        axs.set_ylabel(y_axis) #annies 'Animal ID'
+        axs.set_zlabel(z_axis) #timeseries/signal 'dF/F GCaMP'
+        return
+
+    def plot_stats(self):
+        #compare stats between groups
+
+    # Practice things
+    # engram_exp = fiberPhotometryExperiment(engram_recall_1, engram_recall_2, sham_recall_1, sham_recall_2)
+    # z = engram_exp.event_triggered_average('Recall-ChR2', 'GCaMP', 1, 40)
+
+    # fc_2 = fiberPhotometryCurve('/home/ryansenne/Data/Rebecca/Test_Pho_engram_ChR2_m2_FC.csv', None,
+    #                             **{'treatment': 'ChR2', 'task': 'FC'})
+
+    # fc_experiment = fiberPhotometryExperiment(fc_1, fc_2, fc_3, fc_4, fc_5, fc_6, fc_7, fc_8)
+
+    # z, z1, z2 = fc_experiment.event_triggered_average('GCaMP', 124, 10, 'FC-ChR2')
+    # fc_experiment.plot_eta('GCaMP', 124, 10, 'FC-ChR2', 'FC-eYFP')
+
+    # b_test = b_spline.bSpline(120, 3, 9)
+    # maps, dicts = b_test.create_spline_map([1100, 1650, 2200, 2800], len(fc_1.DF_F_Signals['GCaMP']))
+    # model = fc_1.fit_general_linear_model('GCaMP', dicts)
+    # model.predict(sm.add_constant(sm.add_constant(pd.DataFrame(dicts))))
+
+    # time = fc_1.Timestamps['GCaMP']
+    # my_behave_file = pd.read_csv('/Users/ryansenne/Desktop/Rebecca_Data/Engram_Round2_FC_Freeze - ChR2_m1.csv')
+    # x, y, z = fc_1.process_anymaze(my_behave_file, time)
