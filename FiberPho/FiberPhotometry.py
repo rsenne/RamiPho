@@ -69,8 +69,8 @@ class fiberPhotometryCurve:
             self.behavioral_data['Anymaze'] = {}  # creates nested dictionary within behavioral data dictionary
             # passes csv anymzze file through process_anymaze method, stores it in pandas df
             df = pd.read_csv(getattr(self, 'anymaze_file'))
-            anymaze_df, freeze_vector, inds_start, inds_end =  self.process_anymaze(df, self.Timestamps['GCaMP'])
-            #puts freeze vector array and start/end freezing inds from the process anymaze function into the Anymaze dictionary
+            anymaze_df, freeze_vector, inds_start, inds_end = self.process_anymaze(df,  self.fp_df.Timestamp[self.fp_df['LedState'] == 1])
+            # puts freeze vector array and start/end freezing inds from the process anymaze function into the Anymaze dictionary
             self.behavioral_data['Anymaze']['freeze_vector'] = freeze_vector
 
             self.behavioral_data['Anymaze']['start_freezing'] = inds_start #start of freezing bouts
@@ -992,20 +992,20 @@ class fiberPhotometryExperiment:
             raise ValueError(
                 "Shape of timeseries and timestamp data do not match! Perhaps, try transposing? If not, you may have "
                 "concatenated incorrectly.")
-        y_coordinate_matrix = np.zeros(shape=(np.shape(timeseries)[0], np.shape(timeseries)[1])) #n by m zero matrix
+        y_coordinate_matrix = np.zeros(shape=(np.shape(timeseries)[0], np.shape(timeseries)[1])) # n by m zero matrix
         for i in range(len(timeseries)):
-            y_coordinate_matrix[i] = i + 1 #fill rows with 1s, 2s, 3s, down to n. maybe adjust to scale down so lines are closer
+            y_coordinate_matrix[i] = i + 1 # fill rows with 1s, 2s, 3s, down to n. maybe adjust to scale down so lines are closer
         plt.figure()
         axs = plt.axes(projection="3d")
         for j in range(len(timeseries)):
-            axs.plot(timestamps, y_coordinate_matrix[j], timeseries[j]) #add back **kwargs?
-        axs.set_xlabel(x_axis) #timestamps 'Time (s)'
-        axs.set_ylabel(y_axis) #annies 'Animal ID'
-        axs.set_zlabel(z_axis) #timeseries/signal 'dF/F GCaMP'
+            axs.plot(timestamps, y_coordinate_matrix[j], timeseries[j]) # add back **kwargs?
+        axs.set_xlabel(x_axis) # timestamps 'Time (s)'
+        axs.set_ylabel(y_axis) # annies 'Animal ID'
+        axs.set_zlabel(z_axis) # timeseries/signal 'dF/F GCaMP'
         return
 
-    def plot_stats(self):
-        #compare stats between groups
+    # def plot_stats(self):
+    # compare stats between groups
 
     # Practice things
     # engram_exp = fiberPhotometryExperiment(engram_recall_1, engram_recall_2, sham_recall_1, sham_recall_2)
