@@ -19,9 +19,7 @@ __all__ = ["fiberPhotometryCurve", "fiberPhotometryExperiment"]
 
 
 class fiberPhotometryCurve:
-    def __init__(self, npm_file: str, behavioral_data: str = None, keystroke_offset=None, manual_off_set=None,
-                 remove_extrema=False,
-                 **kwargs):
+    def __init__(self, npm_file: str, **kwargs):
         """
         :param npm_file: str Path to csv fiber photometry file gathered using a neurophotometrics fp3002 rig and bonsai software
         :param behavioral_data: Path(s) to csv files, either deeplabcut or anymaze, for doing behavioral analysis
@@ -30,28 +28,61 @@ class fiberPhotometryCurve:
         :param kwargs: dict containing values such as "ID", "task", and/or "treatment" note: task and treatment necessary for use in fiberPhotometryExperiment
 
         """
+        for key, value in kwargs.items():
+            setattr(self, key, value)
 
         # these should always be present
         self.npm_file = npm_file
-        self.behavioral_data = behavioral_data
         self.fp_df = pd.read_csv(self.npm_file)
         self.__T0__ = self.fp_df['Timestamp'][1]
 
         # unpack extra params
-        for key, value in kwargs.items():
-            setattr(self, key, value)
+        if hasattr(self, 'keystroke_offset') or hasattr(self, 'manual_off_set'):
+            if hasattr(self, 'keystroke_offset'):
+                self.OffSet = (self.keystroke_offset - self.fp_df.at[0, 'Timestamp'])
+            else:
+                self.OffSet = self.manual_off_set
+        else:
+            self.OffSet = 0.0
 
         # determine sample time
         self._sample_time_ = np.diff(self.fp_df['Timestamp'])[1]
 
-        if manual_off_set:
-            self.fp_df = self.fp_df[int(manual_off_set // self._sample_time_):].reset_index()
-            self.OffSet = manual_off_set
+        # this needs to be here for coherent timestamp data between behavioral analysis and signal
 
-        if keystroke_offset:
-            self.OffSet = (keystroke_offset - self.fp_df.at[0, 'Timestamp'])
-            ind = self.fp_df[self.fp_df['Timestamp'] == keystroke_offset].index[0]
-            self.fp_df = self.fp_df[ind:].reset_index()
+        # mb trying to do behavioral dict of dicts
+        # if there's a DLC file, apply calc kinematics on that file and then put the velocity and accel column as keys
+            # mb trying to do behavioral dict of dicts
+        self.behavioral_data = {} #behavioral data dictionary
+        if hasattr(self, 'DLC_file'): #if there's a DLC file key word arg
+            self.behavioral_data['DLC'] = {} #creates nested dictionary within behavioral data dictionary
+
+            #if parameters  of calc_kinematics change, pass them through calc kinematics
+            #passes csv DLC file through calc_kinematics function, stores it in pandas df
+            df = self.calc_kinematics(getattr(self, 'DLC_file'), getattr(self, 'bps', None), getattr(self, 'interpolate', True), getattr(self, 'int_f', 100), getattr(self, 'threshold', .6))
+
+            #creates a numpy array as a value for the velocity and acceleration, taken from velocity and acceleration columns of df
+            self.behavioral_data['DLC']['velocity'] = df['velocity'].to_numpy()
+            self.behavioral_data['DLC']['acceleration'] = df['acceleration'].to_numpy()
+            # add kwargs
+        if hasattr(self, 'anymaze_file'):  # if there's an anymaze file key word arg
+            self.behavioral_data['Anymaze'] = {}  # creates nested dictionary within behavioral data dictionary
+            # passes csv anymzze file through process_anymaze method, stores it in pandas df
+            df = pd.read_csv(getattr(self, 'anymaze_file'))
+            anymaze_df, freeze_vector, inds_start, inds_end =  self.process_anymaze(df, self.Timestamps['GCaMP'])
+            #puts freeze vector array and start/end freezing inds from the process anymaze function into the Anymaze dictionary
+            self.behavioral_data['Anymaze']['freeze_vector'] = freeze_vector
+
+            self.behavioral_data['Anymaze']['start_freezing'] = inds_start #start of freezing bouts
+            self.behavioral_data['Anymaze']['end_freezing'] = inds_end #ends of freezing bouts
+
+        if hasattr(self, 'manual_off_set'):
+            self.fp_df = self.fp_df[int(self.manual_off_set // self._sample_time_):].reset_index()
+
+        if hasattr(self, 'keystroke_offset'):
+            ind = self.fp_df[self.fp_df['Timestamp'] == self.keystroke_offset].index[0]
+            self.fp_df = self.fp_df[ind - 1:].reset_index()
+            self.__T0__ = self.fp_df['Timestamp'][0]
 
         # check to see if using old files
         if "Flags" in self.fp_df.columns:
@@ -153,32 +184,6 @@ class fiberPhotometryCurve:
         self.peak_properties = self.find_signal()
         self.neg_peak_properties = self.find_signal(neg=True)
 
-        # mb trying to do behavioral dict of dicts
-        # if there's a DLC file, apply calc kinematics on that file and then put the velocity and accel column as keys
-        self.behavioral_data = {} #behavioral data dictionary
-        if hasattr(self, 'DLC_file'): #if there's a DLC file key word arg
-            self.behavioral_data['DLC'] = {} #creates nested dictionary within behavioral data dictionary
-
-            #if parameters  of calc_kinematics change, pass them through calc kinematics
-            #passes csv DLC file through calc_kinematics function, stores it in pandas df
-            df = self.calc_kinematics(getattr(self, 'DLC_file'), getattr(self, 'bps', None), getattr(self, 'interpolate', True), getattr(self, 'int_f', 100), getattr(self, 'threshold', .6))
-
-            #creates a numpy array as a value for the velocity and acceleration, taken from velocity and acceleration columns of df
-            self.behavioral_data['DLC']['velocity'] = df['velocity'].to_numpy()
-            self.behavioral_data['DLC']['acceleration'] = df['acceleration'].to_numpy()
-            # add kwargs
-        if hasattr(self, 'anymaze_file'):  # if there's an anymaze file key word arg
-            self.behavioral_data['Anymaze'] = {}  # creates nested dictionary within behavioral data dictionary
-            # passes csv anymzze file through process_anymaze method, stores it in pandas df
-            df = pd.read_csv(getattr(self, 'anymaze_file'))
-            anymaze_df, freeze_vector, inds_start, inds_end =  self.process_anymaze(df, self.Timestamps['GCaMP'])
-            #puts freeze vector array and start/end freezing inds from the process anymaze function into the Anymaze dictionary
-            self.behavioral_data['Anymaze']['freeze_vector'] = freeze_vector
-
-            self.behavioral_data['Anymaze']['start_freezing'] = inds_start #start of freezing bouts
-            self.behavioral_data['Anymaze']['end_freezing'] = inds_end #ends of freezing bouts
-           
-
     def __iter__(self):
         return iter(list(self.DF_F_Signals.values()))
 
@@ -275,10 +280,15 @@ class fiberPhotometryCurve:
                 df_z_signals[i] = self._als_detrend(df_z_signals[i])
         # smoothed like a baby's bottom
         smoothed_f_signals = [self.smooth(timeseries, kernel=10) for timeseries in
-                            df_f_signals]
+                              df_f_signals]
         smoothed_z_signals = [self.smooth(timeseries, kernel=10) for timeseries in
                               df_z_signals]
-        return {identity: signal for identity, signal in zip(self.Signal.keys(), smoothed_f_signals)}, {identity: signal for identity, signal in zip(self.Signal.keys(), smoothed_z_signals)}
+        return {identity: signal for identity, signal in zip(self.Signal.keys(), smoothed_f_signals)}, {identity: signal
+                                                                                                        for
+                                                                                                        identity, signal
+                                                                                                        in
+                                                                                                        zip(self.Signal.keys(),
+                                                                                                            smoothed_z_signals)}
 
     def fit_general_linear_model(self, curve, ind_vars):
         dep_var = np.reshape(self.DF_F_Signals[curve], (len(self.DF_F_Signals[curve]), 1))
@@ -306,7 +316,9 @@ class fiberPhotometryCurve:
                 #calculates area under the curve for each peak and adds to properties dictionary
                 properties['areas_under_curve'] = self.calc_area(properties['left_bases'], properties['right_bases'],
                                                                  self.DF_F_Signals[GECI])
+
                 #populates  the peak properties dictionary with properties nested dictionary for each GECI
+                properties['widths'] *= self._sample_time_
                 peak_properties[GECI] = properties
                 #michelle tries to do iei
                 # finds the inter event interval between each peak
@@ -347,6 +359,7 @@ class fiberPhotometryCurve:
                                                                  self.DF_F_Signals[GECI])
                 # michelle tries to do iei
                 # finds the inter event interval between each peak
+                properties['widths'] *= self._sample_time_
                 peak_properties[GECI] = properties
                 # finds the inter event interval between each peak
                 iei = [(self.Timestamps[GECI][peak_properties[GECI]['peaks'][i+1]] - self.Timestamps[GECI][peak_properties[GECI]['peaks'][i]]) for i in range(len(peak_properties[GECI]['peaks']) - 1)]
@@ -404,16 +417,16 @@ class fiberPhotometryCurve:
         return
 
     def process_anymaze(self, anymaze_file, timestamps):
-        """
-
         :param anymaze_file: panda dataframe of anymaze data
         :param timestamps: array of timestamps
         :return: anymaze file, binary freeze vector, inds_start, inds_end (lists of start/end index of freezing bouts)
         """
+        timestamps.reset_index(drop=True, inplace=True)
+        timestamps = timestamps.to_numpy() - timestamps[0]
         length = len(timestamps)
         times = anymaze_file.Time.str.split(':')
-        # convert time from minutes to seconds
-        if len(times[1]) == 3: #Time series in form h:min:secs
+        if len(times[0]) == 3:
+
             for i in range(len(times)):
                 anymaze_file.loc[i, 'seconds'] = (float(times[i][1]) * 60 + float(times[i][2]))
         else:
@@ -421,13 +434,19 @@ class fiberPhotometryCurve:
                 anymaze_file.loc[i, 'seconds'] = (float(times[i][0]) * 60 + float(times[i][1]))
         anymaze_file.seconds = anymaze_file['seconds'].apply(
             lambda x: (x / anymaze_file.seconds.iloc[-1] * timestamps[-1]))
-        #creates freeze vector array, every second will have corresponding 0 (not freezing) or 1 (freezing)
-        binary_freeze_vec = np.zeros(shape=(length))
+
+        anymaze_file.seconds = anymaze_file.seconds - self.OffSet
+        anymaze_file = anymaze_file[anymaze_file['seconds'] > 0].reset_index()
+        binary_freeze_vec = np.zeros(shape=length)
         i = 0
-        while i < len(times):
-            if anymaze_file.loc[i, 'Freezing'] == 1: #first time freezing
+        while i < len(anymaze_file):
+            if anymaze_file.loc[i, 'Freezing'] == 1:
+
                 t1 = anymaze_file.loc[i, 'seconds']
-                t2 = anymaze_file.loc[i + 1, 'seconds']
+                try:
+                    t2 = anymaze_file.loc[i + 1, 'seconds']
+                except KeyError:
+                    t2 = anymaze_file.seconds.iloc[-1]
                 try:
                     binary_freeze_vec[np.where(timestamps > t1)[0][0]:np.where(timestamps < t2)[0][-1] + 1] = 1 #!!added +1 because end point of slicing is exclusive
                     # print(np.where(timestamps > t1)[0][0], np.where(timestamps < t2)[0][-1])
@@ -442,6 +461,60 @@ class fiberPhotometryCurve:
         inds_end = [int(np.argwhere(timestamps <= time_val)[-1]) for time_val in time_val_0] #list of end indices of freezing bouts
         inds_start = [int(np.argwhere(timestamps >= time_val)[0]) for time_val in time_val_1] #list of start indices of freezing bouts
         return anymaze_file, binary_freeze_vec, inds_start, inds_end
+
+    def calc_binned_freezing(self, bins):
+        bin_time = np.diff(bins)[0]
+        if hasattr(self, 'OffSet'):
+            bins = [x + self.OffSet for x in bins]
+        per_freezing = pd.DataFrame()
+        self.behavioral_data['Anymaze']['anymaze_df']['bin'] = pd.cut(
+            self.behavioral_data['Anymaze']['anymaze_df'].seconds, bins, include_lowest=True)
+        anymaze_df = self.behavioral_data['Anymaze']['anymaze_df'].dropna()
+        unique_bins = anymaze_df.bin.unique()
+
+        freeze_time = np.zeros(shape=(len(bins) - 1,))
+        if len(unique_bins) < len(bins) - 1:
+            i = len(bins) - 1 - len(unique_bins)
+        else:
+            i = 0
+        for bin in unique_bins:
+            if i > len(bins) - 2:
+                freeze_time = np.zeros(shape=(len(bins) - 1,))
+            else:
+                # print(i)
+                df = anymaze_df[anymaze_df['bin'] == bin].reset_index()
+                if df.at[0, 'Freezing'] == 0:
+                    even = True
+                else:
+                    even = False
+                if even:
+                    time_freezing = np.sum([x for x in np.diff(df['seconds'])[1::2]])
+                    if df.Freezing.iloc[-1] == 1:
+                        delta_t_e = df.at[0, 'bin'].right - df.seconds.iloc[-1]
+                    else:
+                        delta_t_e = 0
+                    if df.Freezing.iloc[0] == 0:
+                        delta_t_b = df.seconds.iloc[0] - df.at[0, 'bin'].left
+                    else:
+                        delta_t_b = 0
+                    time_freezing += delta_t_e + delta_t_b
+                    freeze_time[i] = time_freezing
+                    i += 1
+                else:
+                    time_freezing = np.sum([x for x in np.diff(df['seconds'])[0::2]])
+                    if df.Freezing.iloc[-1] == 1:
+                        delta_t_e = df.at[0, 'bin'].right - df.seconds.iloc[-1]
+                    else:
+                        delta_t_e = 0
+                    if df.Freezing.iloc[0] == 0:
+                        delta_t_b = df.seconds.iloc[0] - df.at[0, 'bin'].left
+                    else:
+                        delta_t_b = 0
+                    time_freezing += delta_t_e + delta_t_b
+                    freeze_time[i] = time_freezing
+                    i += 1
+        setattr(self, 'binned_freezing', freeze_time / bin_time)
+        return
 
     def calc_kinematics(self, DLC_file, bps=None, interpolate=True, int_f=100, threshold=.6):
 
@@ -556,17 +629,20 @@ class fiberPhotometryCurve:
 
     def calc_avg_peak_props(self, props=None):
         if props is None:
-            props = ['widths', 'areas_under_curve', 'peak_heights']
+            props = ['widths', 'areas_under_curve', 'peak_heights', 'total_events']
         condensed_props = {}
         for signal in self.peak_properties:
+            self.peak_properties[signal]['total_events'] = len(self.peak_properties[signal]['peak_heights'])
             condensed_props.update(
                 {signal: {"average" + "_" + prop: np.average(self.peak_properties[signal][prop]) for prop in props}})
         setattr(self, "condensed_stats", condensed_props)
         return condensed_props
 
-    def reset_peak_params(self, crit_width, curve_type):
+    def reset_peak_params(self, crit_width, curve_type, props=None):
         deletion_list = [i for i, j in enumerate(self.peak_properties[curve_type]['widths']) if j < crit_width]
-        for prop in self.peak_properties[curve_type]:
+        if props is None:
+            props = ['widths', 'areas_under_curve', 'peak_heights']
+        for prop in props:
             self.peak_properties[curve_type][prop] = np.delete(self.peak_properties[curve_type][prop], deletion_list)
         return
 
@@ -625,10 +701,6 @@ class fiberPhotometryExperiment:
                     self.__add_to_attribute_dict__('task', arg, arg.task)
                 else:
                     print('No task supplied, assuming all animals are in the same group.')
-
-
-
-
 
         self.__set_permutation_dicts__('task', 'treatment')
         for GECI in self.curves[1].DF_F_Signals.keys():
@@ -722,9 +794,10 @@ class fiberPhotometryExperiment:
         sample1 = [x.condensed_stats[curve]['average' + '_' + metric] for x in s1]
         sample2 = [x.condensed_stats[curve]['average' + '_' + metric] for x in s2]
         stat, pval = test(sample1, sample2)
-        return stat, pval
+        return stat, pval, sample1, sample2
 
     def raster(self, group, curve, a, b, colormap):
+
         """
         Plots a heatmap of specified signal over time interval [a:b]
         :param group: str, desired group to plot
@@ -734,13 +807,17 @@ class fiberPhotometryExperiment:
         :param colormap: str, matplotlib color map scheme
         :return:
         """
-        sb.set()
+        fig, ax = plt.subplots()
         vector_array = np.array(
-            [vec.DF_F_Signals[curve][a:b].tolist() for vec in next(iter(getattr(self, group).values()))])
-        raster = sb.heatmap(vector_array, cmap=colormap)
-        raster.set(xlabel='Time', ylabel='Animal ID')
+            [vec.DF_Z_Signals[curve][a:b].tolist() for vec in next(iter(getattr(self, group).values()))])
+        raster = sb.heatmap(vector_array, vmin=0, vmax=8, cmap=colormap, ax=ax,
+                            cbar_kws={'label': r'z-scored $\frac{dF}{F}$ (%)', 'location': 'left'})
+        raster.xaxis.set_ticks(np.arange(0, 3920, 560), [0, 60, 120, 180, 240, 300, 360])
+        raster.yaxis.set_ticks([])
+        plt.title('No Shock')
+        plt.xlabel('Time (s)')
         plt.show()
-        return
+        return fig
 
     def st_event_triggered_average(self, curve, event_time, window, group, plot=False, timepoint=True):
         time = [time.Timestamps[curve].tolist() for time in next(iter(getattr(self, group).values()))]
@@ -777,7 +854,7 @@ class fiberPhotometryExperiment:
             plt.show()
         return averaged_trace, average_time[index_left_bound:index_right_bound], ci
 
-    def mt_event_triggered_average(self, curve, event_times, window, group, plot=False, timepoint=True):
+    def mt_event_triggered_average(self, curve, event_times, window, group, ci_type='t', shuffle=False, timepoint=False):
         max_ind = np.min(
             [len(x) for x in [t.Timestamps[curve].tolist() for t in next(iter(getattr(self, group).values()))]])
         time_array = np.array(
@@ -785,9 +862,13 @@ class fiberPhotometryExperiment:
         # we make an assumption here that all animals were recorded at same fps, ergo, the sample_time should be the
         # same for all animals
         sample_time = np.diff(time_array[0])[1]
-        ind_plus = window/sample_time
+        ind_plus = window / sample_time
         vector_array = np.array(
             [trace.DF_F_Signals[curve][0:max_ind].tolist() for trace in next(iter(getattr(self, group).values()))])
+        if shuffle:
+            vector_array_copy = vector_array.T
+            np.random.shuffle(vector_array_copy)
+            vector_array = vector_array_copy.T
         inds = []
         if timepoint:
             for i in range(len(event_times)):
@@ -796,39 +877,49 @@ class fiberPhotometryExperiment:
         else:
             inds = event_times
         mt_eta = []
-        for animal in range(len(vector_array)):
+        for animal in range(np.shape(vector_array)[0]):
             if len(event_times) != 1:
-                part_traces = np.array(
-                    [vector_array[animal][indice - (int(ind_plus / 2)):int(indice + ind_plus)].tolist() for indice in
-                     inds[animal]])
+                trace_len = int(ind_plus) + int(ind_plus / 2)
+                part_traces = [vector_array[animal][indice - (int(ind_plus / 2)):int(indice + ind_plus)].tolist() for
+                               indice in inds[animal]]
+                part_traces = [trace for trace in part_traces if len(trace) == trace_len]
             else:
                 part_traces = np.array(
-                    [vector_array[animal][indice - (int(ind_plus / 2)):int(indice + ind_plus)].tolist() for indice in inds[0]])
-            eta = np.average(part_traces, axis=0)
+                    [vector_array[animal][indice - (int(ind_plus / 2)):int(indice + ind_plus)].tolist() for indice in
+                     inds[0]])
+            eta = np.average(np.array(part_traces), axis=0)
             mt_eta.append(eta)
+        mt_eta = np.array(mt_eta)
         av_tr = np.average(mt_eta, axis=0)
-        ci = 1.96 * np.std(mt_eta, axis=0) / np.sqrt(np.shape(mt_eta)[0])
-        time_int = np.linspace(-window/2, window, len(av_tr))
+        if ci_type == 't':
+            ci = 2.58 * np.std(mt_eta, axis=0) / np.sqrt(np.shape(mt_eta)[0])
+        elif ci_type == 'bs':
+            ci = self.bootstrap_ci(mt_eta, niter=1000)
+        else:
+            ci = 0
+        time_int = np.linspace(-window / 2, window, len(av_tr))
         return av_tr, mt_eta, time_int, ci
 
-    # test this function
-    def bootstrap(self, inds, average_trace, window, niter): #Mia do this
-        """
-
-        :param inds: list,  indexes of start time of freezing bouts
-        :param average_trace:
-        :param window: int, range of index after freezing start to look for event
-        :param niter: int, number of iterations
-        :return:
-        """
-        average_trace_copy = average_trace
-        actual_values = [max(average_trace_copy[i:i + window] for i in inds)] #max signals in each bout window
         avg_max = []
         for i in range(niter):
-            np.random.shuffle(average_trace)
-            max_average = np.average([max(average_trace[i:i + window] for i in inds)])
-            avg_max.append(max_average)
-        return avg_max, actual_values
+            rng = np.random.default_rng(12345)
+            rints = rng.integers(low=0, high=315, size=4)
+            av_tr, mt_eta, time_int, ci = self.mt_event_triggered_average(curve, [rints], window, group, shuffle=True,
+                                                                          timepoint=True)
+            maxs = np.max(np.average(mt_eta))
+            avg_max.append(maxs)
+        return avg_max  # actual_values
+
+    def bootstrap_ci(self, vector_array, sig, niter=1000):
+        rng = np.random.default_rng()
+        random_bst_vec = rng.integers(low=0, high=int(np.size(vector_array, 0)), size=niter)
+        bootstrap_mat = vector_array[random_bst_vec]
+        print(bootstrap_mat)
+        sort_boot_strap_mat = np.sort(bootstrap_mat, axis=0)
+        ci_low = sort_boot_strap_mat[26, :]
+        ci_up = sort_boot_strap_mat[975, :]
+        ci_lower_upper = np.percentile(bootstrap_mat, [sig/2, 100-(sig/2)], axis=0)
+        return ci_lower_upper, ci_low, ci_up
 
     def plot_st_eta(self, curve, event_time, window, *args):
         for arg in args:
@@ -840,15 +931,39 @@ class fiberPhotometryExperiment:
             plt.show()
         return
 
-    def plot_mt_eta(self, curve, event_times, window, *args):
-        for arg in args:
-            av_tr, mt_eta, av_ti, ci = self.mt_event_triggered_average(curve, event_times, window, arg)
-            plt.axvline(0, linestyle='--', color='black')
-            plt.plot(av_ti, av_tr)
-            plt.fill_between(av_ti, (av_tr - ci), (av_tr + ci), alpha=0.1)
+    def plot_mt_eta(self, curve, event_times, window, timepoint=True, *args):
+        fig, ax = plt.subplots(1, 1)
+        ax.spines['top'].set_visible(False)
+        ax.spines['right'].set_visible(False)
         plt.xlabel('Time (s)')
         plt.ylabel(r'$\frac{dF}{F}$ (%)')
-        return
+        for i in range(len(args)):
+            if len(event_times) == 1:
+                av_tr, mt_eta, av_ti, ci = self.mt_event_triggered_average(curve, event_times, window, timepoint, args[i])
+                ax.plot(av_ti, av_tr)
+                ax.fill_between(av_ti, (av_tr - ci), (av_tr + ci), alpha=0.1, label=None)
+            else:
+                av_tr, mt_eta, av_ti, ci = self.mt_event_triggered_average(curve, event_times[i], window, timepoint, args[i])
+                ax.plot(av_ti, av_tr)
+                ax.fill_between(av_ti, (av_tr - ci), (av_tr + ci), alpha=0.1, label=None)
+        ax.axvline(0, linestyle='--', color='black')
+        return fig, ax
+
+    def percent_freezing(self, bins, g1, g2):
+        freeze_df = pd.DataFrame(columns=['Animal', 'Group'])
+        i = 0
+        for g in (g1, g2):
+            for animal in list(getattr(self, g).values())[0]:
+                animal.calc_binned_freezing(bins)
+                if hasattr(animal, 'ID'):
+                    freeze_df.loc[i, 'Animal'] = animal.ID
+                freeze_df.loc[i, 'Group'] = g
+                j = 0
+                for b in animal.binned_freezing:
+                    freeze_df.loc[i, 'bin' + str(j)] = b
+                    j += 1
+                i += 1
+        return freeze_df
 
     def create_timeseries(self, group, curve='GCaMP', time_length=0):
         """
@@ -924,52 +1039,3 @@ class fiberPhotometryExperiment:
     # time = fc_1.Timestamps['GCaMP']
     # my_behave_file = pd.read_csv('/Users/ryansenne/Desktop/Rebecca_Data/Engram_Round2_FC_Freeze - ChR2_m1.csv')
     # x, y, z = fc_1.process_anymaze(my_behave_file, time)
-
-    #Michelle Practice
-    #%%if __name__ == '__main__':
-        fc_prac = fiberPhotometryCurve('/Users/michellebuzharsky/Downloads/BLA_Recall_M4.csv', None, None,
-                                    None,
-                                    **{'treatment': 'ChR2', 'task': 'FC'})
-        print(len(fc_prac.Timestamps['GCaMP']))
-
-        print(fc_prac.peak_properties['GCaMP']['inter_event_interval'])
-        #fc_prac.visual_check_peaks('GCaMP')
-
-        # %%
-        """dual_prac = fiberPhotometryCurve('/Users/michellebuzharsky/Downloads/dual_c2_m5_FC.csv', None, None,
-                                    None,
-                                    **{'treatment': 'ChR2', 'task': 'FC'})"""
-        dual_prac = fiberPhotometryCurve('/Users/michellebuzharsky/Downloads/dual_opto_shock_recall_m2.csv', None, None,
-                                         None,
-                                         **{'treatment': 'ChR2', 'task': 'FC'})
-
-#%%Before
-        plt.plot(fc_prac.behavioral_data['DLC']['velocity'])
-        plt.show()
-#%% After
-        plt.plot(fc_prac.behavioral_data['DLC']['velocity'],color='pink')
-        plt.title('Michelle does plots')
-        plt.xlabel('Frames')
-        plt.ylabel('Velocity (pixels/frame)')
-        plt.show()
-
-        plt.plot(fc_prac.behavioral_data['DLC']['acceleration'],color='lightblue')
-        plt.title('Michelle does plots')
-        plt.xlabel('Frames')
-        plt.ylabel('Acceleration')
-        plt.show()
-
-        plt.plot(fc_prac.behavioral_data['Anymaze']['freeze_vector'])
-        plt.title('Michelle does plots')
-        plt.ylabel('Freeze or Nah')
-        plt.xlabel('Time (ms)')
-        plt.show()
-#%% Plot them together yay
-        fig, axs = plt.subplots(3,1)
-        axs[0].plot(fc_prac.behavioral_data['Anymaze']['freeze_vector'])
-        axs[0].set_xlabel('time (ms)')
-        axs[0].set_ylabel('Freeze or nahh')
-        axs[1].plot(fc_prac.behavioral_data['DLC']['velocity'])
-        axs[1].set_xlabel('frames')
-        axs[2].plot(fc_prac.behavioral_data['DLC']['acceleration'])
-        axs[2].set_xlabel('frames')
