@@ -784,45 +784,21 @@ class fiberPhotometryExperiment:
         mt_eta = np.array(mt_eta)
         av_tr = np.average(mt_eta, axis=0)
         if ci_type == 't':
-            ci = 2.58 * np.std(mt_eta, axis=0) / np.sqrt(np.shape(mt_eta)[0])
+            ci = 1.96 * np.std(mt_eta, axis=0) / np.sqrt(np.shape(mt_eta)[0])
         elif ci_type == 'bs':
-            ci = self.bootstrap_ci(mt_eta, niter=1000)
+            ci = self.bootstrap_ci(mt_eta, 0.05, niter=1000)
         else:
             ci = 0
+        sem = np.std(mt_eta, axis=0) / np.sqrt(np.shape(mt_eta)[0])
         time_int = np.linspace(-window / 2, window, len(av_tr))
-        return av_tr, mt_eta, time_int, ci
-
-    # test this function
-    def bootstrap(self, curve, event_times, window, group, niter):
-        avg_max = []
-        for i in range(niter):
-            av_tr, mt_eta, time_int, ci = self.mt_event_triggered_average(curve, event_times, window, group,
-                                                                          shuffle=True, timepoint=False)
-            maxs = np.max(np.average(mt_eta))
-            avg_max.append(maxs)
-        return avg_max  # actual_values
-
-    def bootstrap1(self, curve, window, group, niter):
-        avg_max = []
-        for i in range(niter):
-            rng = np.random.default_rng(12345)
-            rints = rng.integers(low=0, high=315, size=4)
-            av_tr, mt_eta, time_int, ci = self.mt_event_triggered_average(curve, [rints], window, group, shuffle=True,
-                                                                          timepoint=True)
-            maxs = np.max(np.average(mt_eta))
-            avg_max.append(maxs)
-        return avg_max  # actual_values
+        return av_tr, mt_eta, time_int, ci, sem
 
     def bootstrap_ci(self, vector_array, sig, niter=1000):
         rng = np.random.default_rng()
         random_bst_vec = rng.integers(low=0, high=int(np.size(vector_array, 0)), size=niter)
         bootstrap_mat = vector_array[random_bst_vec]
-        print(bootstrap_mat)
-        sort_boot_strap_mat = np.sort(bootstrap_mat, axis=0)
-        ci_low = sort_boot_strap_mat[26, :]
-        ci_up = sort_boot_strap_mat[975, :]
         ci_lower_upper = np.percentile(bootstrap_mat, [sig/2, 100-(sig/2)], axis=0)
-        return ci_lower_upper, ci_low, ci_up
+        return ci_lower_upper
 
     def plot_st_eta(self, curve, event_time, window, *args):
         for arg in args:
@@ -834,7 +810,7 @@ class fiberPhotometryExperiment:
             plt.show()
         return
 
-    def plot_mt_eta(self, curve, event_times, window, timepoint=True, *args):
+    def plot_mt_eta(self, curve, event_times, window, *args):
         fig, ax = plt.subplots(1, 1)
         ax.spines['top'].set_visible(False)
         ax.spines['right'].set_visible(False)
@@ -842,13 +818,13 @@ class fiberPhotometryExperiment:
         plt.ylabel(r'$\frac{dF}{F}$ (%)')
         for i in range(len(args)):
             if len(event_times) == 1:
-                av_tr, mt_eta, av_ti, ci = self.mt_event_triggered_average(curve, event_times, window, timepoint, args[i])
+                av_tr, mt_eta, av_ti, ci, sem = self.mt_event_triggered_average(curve, event_times, window, args[i])
                 ax.plot(av_ti, av_tr)
-                ax.fill_between(av_ti, (av_tr - ci), (av_tr + ci), alpha=0.1, label=None)
+                ax.fill_between(av_ti, (av_tr - sem), (av_tr + sem), alpha=0.1, label=None)
             else:
-                av_tr, mt_eta, av_ti, ci = self.mt_event_triggered_average(curve, event_times[i], window, timepoint, args[i])
+                av_tr, mt_eta, av_ti, ci, sem = self.mt_event_triggered_average(curve, event_times[i], window, args[i])
                 ax.plot(av_ti, av_tr)
-                ax.fill_between(av_ti, (av_tr - ci), (av_tr + ci), alpha=0.1, label=None)
+                ax.fill_between(av_ti, (av_tr - sem), (av_tr + sem), alpha=0.1, label=None)
         ax.axvline(0, linestyle='--', color='black')
         return fig, ax
 
