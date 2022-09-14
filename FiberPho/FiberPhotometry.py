@@ -78,6 +78,7 @@ class fiberPhotometryCurve:
 
             self.behavioral_data['Anymaze']['start_freezing'] = inds_start  # start of freezing bouts
             self.behavioral_data['Anymaze']['end_freezing'] = inds_end  # ends of freezing bouts
+            self.behavioral_data['Anymaze']['anymaze_df'] = anymaze_df
 
         if hasattr(self, 'manual_off_set'):
             self.fp_df = self.fp_df[int(self.manual_off_set // self._sample_time_):].reset_index()
@@ -456,7 +457,6 @@ class fiberPhotometryCurve:
         length = len(timestamps)
         times = anymaze_file.Time.str.split(':')
         if len(times[0]) == 3:
-
             for i in range(len(times)):
                 anymaze_file.loc[i, 'seconds'] = (float(times[i][1]) * 60 + float(times[i][2]))
         else:
@@ -471,7 +471,6 @@ class fiberPhotometryCurve:
         i = 0
         while i < len(anymaze_file):
             if anymaze_file.loc[i, 'Freezing'] == 1:
-
                 t1 = anymaze_file.loc[i, 'seconds']
                 try:
                     t2 = anymaze_file.loc[i + 1, 'seconds']
@@ -857,40 +856,40 @@ class fiberPhotometryExperiment:
         plt.show()
         return fig
 
-    def st_event_triggered_average(self, curve, event_time, window, group, plot=False, timepoint=True):
-        time = [time.Timestamps[curve].tolist() for time in next(iter(getattr(self, group).values()))]
-        max_ind = np.min([len(x) for x in time])
-        time_array = np.array(
-            [time.Timestamps[curve][0:max_ind].tolist() for time in next(iter(getattr(self, group).values()))])
-        try:
-            average_time = np.average(time_array, axis=0)
-        except ZeroDivisionError:
-            average_time = np.zeros(shape=(1, len(time_array)))
-            average_time[0] = 0
-            average_time[1:] = np.average(time_array[1:], axis=0)
-        if timepoint:
-            ind = np.argmin(np.abs(average_time - event_time))
-        else:
-            ind = event_time
-        index_right_bound = np.argmin(np.abs(average_time - (event_time + window)))
-        index_left_bound = np.argmin(np.abs(average_time - (event_time - (window / 2))))
-        vector_array = np.array([vec.DF_F_Signals[curve][index_left_bound:index_right_bound].tolist() for vec in
-                                 next(iter(getattr(self, group).values()))])
-        try:
-            averaged_trace = np.average(vector_array, axis=0)
-        except ZeroDivisionError:
-            averaged_trace = np.zeros(shape=(1, len(vector_array)))
-            averaged_trace[0] = 0
-            averaged_trace[1:] = np.average(vector_array[1:], axis=0)
-        ci = 1.96 * np.std(vector_array, axis=0) / np.sqrt(np.shape(vector_array)[0])
-        if plot:
-            fig, ax = plt.subplots()
-            plt.axvline(average_time[ind], linestyle='--', color='black')
-            ax.plot(average_time[index_left_bound:index_right_bound], averaged_trace)
-            ax.fill_between(average_time[index_left_bound: index_right_bound], (averaged_trace - ci),
-                            (averaged_trace + ci), color='b', alpha=0.1)
-            plt.show()
-        return averaged_trace, average_time[index_left_bound:index_right_bound], ci
+    # def st_event_triggered_average(self, curve, event_time, window, group, plot=False, timepoint=True):
+    #     time = [time.Timestamps[curve].tolist() for time in next(iter(getattr(self, group).values()))]
+    #     max_ind = np.min([len(x) for x in time])
+    #     time_array = np.array(
+    #         [time.Timestamps[curve][0:max_ind].tolist() for time in next(iter(getattr(self, group).values()))])
+    #     try:
+    #         average_time = np.average(time_array, axis=0)
+    #     except ZeroDivisionError:
+    #         average_time = np.zeros(shape=(1, len(time_array)))
+    #         average_time[0] = 0
+    #         average_time[1:] = np.average(time_array[1:], axis=0)
+    #     if timepoint:
+    #         ind = np.argmin(np.abs(average_time - event_time))
+    #     else:
+    #         ind = event_time
+    #     index_right_bound = np.argmin(np.abs(average_time - (event_time + window)))
+    #     index_left_bound = np.argmin(np.abs(average_time - (event_time - (window / 2))))
+    #     vector_array = np.array([vec.DF_F_Signals[curve][index_left_bound:index_right_bound].tolist() for vec in
+    #                              next(iter(getattr(self, group).values()))])
+    #     try:
+    #         averaged_trace = np.average(vector_array, axis=0)
+    #     except ZeroDivisionError:
+    #         averaged_trace = np.zeros(shape=(1, len(vector_array)))
+    #         averaged_trace[0] = 0
+    #         averaged_trace[1:] = np.average(vector_array[1:], axis=0)
+    #     ci = 1.96 * np.std(vector_array, axis=0) / np.sqrt(np.shape(vector_array)[0])
+    #     if plot:
+    #         fig, ax = plt.subplots()
+    #         plt.axvline(average_time[ind], linestyle='--', color='black')
+    #         ax.plot(average_time[index_left_bound:index_right_bound], averaged_trace)
+    #         ax.fill_between(average_time[index_left_bound: index_right_bound], (averaged_trace - ci),
+    #                         (averaged_trace + ci), color='b', alpha=0.1)
+    #         plt.show()
+    #     return averaged_trace, average_time[index_left_bound:index_right_bound], ci
 
     def mt_event_triggered_average(self, curve, event_times, window, group, ci_type='t', shuffle=False,
                                    timepoint=False):
@@ -947,15 +946,15 @@ class fiberPhotometryExperiment:
         ci_lower_upper = np.percentile(bootstrap_mat, [sig / 2, 100 - (sig / 2)], axis=0)
         return ci_lower_upper
 
-    def plot_st_eta(self, curve, event_time, window, *args):
-        for arg in args:
-            av_tr, av_ti, ci = self.st_event_triggered_average(curve, event_time, window, arg)
-            ti_ind = np.argmin(np.abs(av_ti - event_time))
-            plt.axvline(av_ti[ti_ind], linestyle='--', color='black')
-            plt.plot(av_ti, av_tr)
-            plt.fill_between(av_ti, (av_tr - ci), (av_tr + ci), alpha=0.1)
-            plt.show()
-        return
+    # def plot_st_eta(self, curve, event_time, window, *args):
+    #     for arg in args:
+    #         av_tr, av_ti, ci = self.st_event_triggered_average(curve, event_time, window, arg)
+    #         ti_ind = np.argmin(np.abs(av_ti - event_time))
+    #         plt.axvline(av_ti[ti_ind], linestyle='--', color='black')
+    #         plt.plot(av_ti, av_tr)
+    #         plt.fill_between(av_ti, (av_tr - ci), (av_tr + ci), alpha=0.1)
+    #         plt.show()
+    #     return
 
     def plot_mt_eta(self, curve, event_times, window, *args):
         fig, ax = plt.subplots(1, 1)
