@@ -404,18 +404,25 @@ class fiberPhotometryCurve:
     #     return peak_properties
 
     def find_signal(self, neg=False):
+        """
+
+        :param neg:
+        :return: a peak property array based on scipy find_peak and other functions
+        """
         peak_properties = {}
         if not neg:
             for GECI, sig in self.DF_F_Signals.items():
+               # returns array of indices of  peaks, and properties dictionary
                 peaks, properties = find_peaks(sig, height=1.0, distance=131, width=25,
                                                rel_height=0.95)  # height=1.0, distance=130, prominence=0.5, width=25, rel_height=0.90)
                 properties['peaks'] = peaks
                 properties['areas_under_curve'] = self.calc_area(properties['left_bases'], properties['right_bases'],
                                                                  self.DF_F_Signals[GECI])
                 properties['widths'] *= self._sample_time_
-                peak_properties[GECI] = properties
+               peak_properties[GECI] = properties
         else:
             for GECI, sig in self.DF_F_Signals.items():
+                # returns array of indices of  peaks, and properties dictionary
                 peaks, properties = find_peaks(-sig, height=1.0, distance=131, width=25, rel_height=0.95)
                 properties['peaks'] = peaks
                 properties['areas_under_curve'] = self.calc_area(properties['left_bases'], properties['right_bases'],
@@ -663,11 +670,17 @@ class fiberPhotometryCurve:
         return
 
     def calc_avg_peak_props(self, props=None):
+        """
+
+        :param props: properties within peak properties dictionary
+        :return:
+        """
         if props is None:
             props = ['widths', 'areas_under_curve', 'peak_heights', 'total_events']
         condensed_props = {}
-        for signal in self.peak_properties:
+        for signal in self.peak_properties: #for the different wavelengthers (GCaMP, RCaMP, Isobestic)
             print(self.peak_properties[signal])
+            #calculates total number of events and adds to peak properties dictionary
             self.peak_properties[signal]['total_events'] = len(self.peak_properties[signal]['peak_heights'])
             condensed_props.update(
                 {signal: {"average" + "_" + prop: np.average(self.peak_properties[signal][prop]) for prop in props}})
@@ -675,10 +688,19 @@ class fiberPhotometryCurve:
         return condensed_props
 
     def reset_peak_params(self, crit_width, curve_type, props=None):
+        """
+
+        :param crit_width: minimum width for peak to be considered an event
+        :param curve_type: signal/GECI
+        :param props: properties of peak_properties, i.e. widths, auc, peak heights
+        :return: deletes peaks that are smaller than the critical width
+        """
+        #finds indexes of peaks that are smaller than the critical width
         deletion_list = [i for i, j in enumerate(self.peak_properties[curve_type]['widths']) if j < crit_width]
         if props is None:
             props = ['widths', 'areas_under_curve', 'peak_heights']
-        for prop in props:
+        for prop in props: #for all properties in peak properties
+            #deletes peak information if peak is erreneous
             self.peak_properties[curve_type][prop] = np.delete(self.peak_properties[curve_type][prop], deletion_list)
         return
 
@@ -708,6 +730,48 @@ class fiberPhotometryCurve:
         rolled_average = [np.average(np.diff(self.Signal[curve])[i:i + j]) for i in range(for_i)]
         indice_extrema = np.where(np.diff(rolled_average) < 0)[0] - 1
         return indice_extrema
+
+    def calc_iei(self):
+        """
+
+        :param self: self
+        :return: adds inter-event-interval array to peak properties dictionary
+        """
+
+        # finds the inter event interval between each peak
+        if(len(self.peak_properties['peaks'])) > 2: #if theres even an iei to calculate
+            for signal in self.peak_properties:
+                self.peak_properties[signal]['iei'] = [(self.Timestamps[signal][self.peak_properties[signal]['peaks'][i + 1]] -
+                                    self.Timestamps[signal][self.peak_properties[signal]['peaks'][i]]) for i in
+                                    range(len(self.peak_properties[signal]['peaks']) - 1)]
+
+
+    def calc_latency(self):
+        """
+
+        :param self: self
+        :return: calculates latency and adds array to peak properties dictionary
+        """
+        latency = []
+        if ('RCaMP' in self.peak_properties and 'GCaMP' in self.peak_properties):  # checks if RCaMP and GCaMP both exist
+                ind_G = 0  # starts GCaMP index count at first index 0
+                for ind_R in range(len(self.peak_properties['RCaMP']['peaks'])):
+                    time_RCaMP = self.peak_properties['RCaMP']['peaks'][ind_R]  # index of when peak happens for each peak in RCaMP
+                    while ind_G < len(self.peak_properties['GCaMP']['peaks']):  # while there's still indeces left in GCaMP array
+                        time_GCaMP = self.peak_properties['GCaMP']['peaks'][ind_G]  # index of when peak happens for each peak in RCaMP
+                        if time_GCaMP > time_RCaMP:  # if GCaMP peak index follows RCaMP (which it should for latency)
+                            if time_GCaMP - time_RCaMP <= 10:  # if the difference is smaller than 10
+                                # add time to latency
+                                latency.append(self.Timestamps['GCaMP'][time_GCaMP] - self.Timestamps['RCaMP'][time_RCaMP])
+                                # augment GCaMP to next index so it's not reused
+                                ind_G += 1
+                                # break out of while loop, move to next RCaMP entry
+                                break
+                            else:  # if the difference is greater than 10, then move on to next RCaMP entry
+                                break
+                        else:  # GCaMP index precedes RCaMP, need to move it up
+                            ind_G += 1  # increase index to the next one
+        self.peak_properties['latency'] = latency
 
 
 # %%
@@ -821,6 +885,7 @@ class fiberPhotometryExperiment:
         crit_wid = self.find_critical_width(pos_list, neg_list)
         setattr(self, "crit_width" + "_" + curve_type, crit_wid)
         for curve in self.curves:
+            #calls reset peak params function that deletes erroneous peaks (below the width)
             curve.reset_peak_params(getattr(self, "crit_width" + "_" + curve_type), curve_type)
             curve.calc_avg_peak_props()
         return
@@ -1068,3 +1133,4 @@ class fiberPhotometryExperiment:
     # time = fc_1.Timestamps['GCaMP']
     # my_behave_file = pd.read_csv('/Users/ryansenne/Desktop/Rebecca_Data/Engram_Round2_FC_Freeze - ChR2_m1.csv')
     # x, y, z = fc_1.process_anymaze(my_behave_file, time)
+# %%
