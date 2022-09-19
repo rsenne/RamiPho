@@ -100,6 +100,9 @@ class fiberPhotometryCurve:
             while self.fp_df['LedState'].value_counts()[1] != self.fp_df['LedState'].value_counts()[2] or \
                     self.fp_df['LedState'].value_counts()[2] != self.fp_df['LedState'].value_counts()[4]:
                 self.fp_df.drop(self.fp_df.index[-1], axis=0, inplace=True)
+                print(self.fp_df['LedState'].value_counts()[1])
+                print(self.fp_df['LedState'].value_counts()[2])
+                print(self.fp_df['LedState'].value_counts()[4])
         except KeyError:
             while self.fp_df['LedState'].value_counts()[1] != self.fp_df['LedState'].value_counts()[2]:
                 self.fp_df.drop(self.fp_df.index[-1], axis=0, inplace=True)
@@ -1134,3 +1137,19 @@ class fiberPhotometryExperiment:
     # my_behave_file = pd.read_csv('/Users/ryansenne/Desktop/Rebecca_Data/Engram_Round2_FC_Freeze - ChR2_m1.csv')
     # x, y, z = fc_1.process_anymaze(my_behave_file, time)
 # %%
+    """fc_prac = fiberPhotometryCurve('/Users/michellebuzharsky/Downloads/opto_shock_fc/m1.csv', **{'treatment': 'ChR2', 'task': 'FC', 'keystroke': 2501.411968})
+    fc_prac.visual_check_peaks('GCaMP')"""
+    #issue: negative peak properties array populated with GCaMP and RCaMP, not peak_properties
+    #other issue: visual check peaks doesn't work
+
+
+    M1 = fiberPhotometryCurve('/Users/michellebuzharsky/Downloads/spont_fc/M1.csv', **{'treatment': 'ChR2', 'task': 'FC', 'keystroke_offset': 1274.41616})
+    M2 = fiberPhotometryCurve('/Users/michellebuzharsky/Downloads/spont_fc/M2.csv', **{'treatment': 'ChR2', 'task': 'FC', 'keystroke_offset': 1903.95312})
+    M3 = fiberPhotometryCurve('/Users/michellebuzharsky/Downloads/spont_fc/M3.csv', **{'treatment': 'ChR2', 'task': 'FC', 'keystroke_offset': 2672.332256})
+    M4 = fiberPhotometryCurve('/Users/michellebuzharsky/Downloads/spont_fc/M4.csv', **{'treatment': 'ChR2', 'task': 'FC', 'keystroke_offset': 3406.342624})
+    M5 = fiberPhotometryCurve('/Users/michellebuzharsky/Downloads/spont_fc/M5.csv', **{'treatment': 'ChR2', 'task': 'FC', 'keystroke_offset': 3952.073312})
+
+
+
+
+    #cohort = fiberPhotometryExperiment(m1, m2, m3)
