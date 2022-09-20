@@ -422,7 +422,7 @@ class fiberPhotometryCurve:
                 properties['areas_under_curve'] = self.calc_area(properties['left_bases'], properties['right_bases'],
                                                                  self.DF_F_Signals[GECI])
                 properties['widths'] *= self._sample_time_
-               peak_properties[GECI] = properties
+                peak_properties[GECI] = properties
         else:
             for GECI, sig in self.DF_F_Signals.items():
                 # returns array of indices of  peaks, and properties dictionary
@@ -740,41 +740,46 @@ class fiberPhotometryCurve:
         :param self: self
         :return: adds inter-event-interval array to peak properties dictionary
         """
-
         # finds the inter event interval between each peak
-        if(len(self.peak_properties['peaks'])) > 2: #if theres even an iei to calculate
-            for signal in self.peak_properties:
+        for signal in self.peak_properties:
+            if (len(self.peak_properties[signal]['peaks'])) > 2:  # if theres even an iei to calculate
                 self.peak_properties[signal]['iei'] = [(self.Timestamps[signal][self.peak_properties[signal]['peaks'][i + 1]] -
                                     self.Timestamps[signal][self.peak_properties[signal]['peaks'][i]]) for i in
                                     range(len(self.peak_properties[signal]['peaks']) - 1)]
 
+        for signal in self.neg_peak_properties:
+            if (len(self.neg_peak_properties[signal]['peaks'])) > 2:  # if theres even an iei to calculate
+                self.neg_peak_properties[signal]['iei'] = [
+                    (self.Timestamps[signal][self.neg_peak_properties[signal]['peaks'][i + 1]] -
+                     self.Timestamps[signal][self.neg_peak_properties[signal]['peaks'][i]]) for i in
+                        range(len(self.neg_peak_properties[signal]['peaks']) - 1)]
 
-    def calc_latency(self):
-        """
-
-        :param self: self
-        :return: calculates latency and adds array to peak properties dictionary
-        """
-        latency = []
-        if ('RCaMP' in self.peak_properties and 'GCaMP' in self.peak_properties):  # checks if RCaMP and GCaMP both exist
-                ind_G = 0  # starts GCaMP index count at first index 0
-                for ind_R in range(len(self.peak_properties['RCaMP']['peaks'])):
-                    time_RCaMP = self.peak_properties['RCaMP']['peaks'][ind_R]  # index of when peak happens for each peak in RCaMP
-                    while ind_G < len(self.peak_properties['GCaMP']['peaks']):  # while there's still indeces left in GCaMP array
-                        time_GCaMP = self.peak_properties['GCaMP']['peaks'][ind_G]  # index of when peak happens for each peak in RCaMP
-                        if time_GCaMP > time_RCaMP:  # if GCaMP peak index follows RCaMP (which it should for latency)
-                            if time_GCaMP - time_RCaMP <= 10:  # if the difference is smaller than 10
-                                # add time to latency
-                                latency.append(self.Timestamps['GCaMP'][time_GCaMP] - self.Timestamps['RCaMP'][time_RCaMP])
-                                # augment GCaMP to next index so it's not reused
-                                ind_G += 1
-                                # break out of while loop, move to next RCaMP entry
-                                break
-                            else:  # if the difference is greater than 10, then move on to next RCaMP entry
-                                break
-                        else:  # GCaMP index precedes RCaMP, need to move it up
-                            ind_G += 1  # increase index to the next one
-        self.peak_properties['latency'] = latency
+    # def calc_latency(self):
+    #     """
+    #
+    #     :param self: self
+    #     :return: calculates latency and adds array to peak properties dictionary
+    #     """
+    #     latency = []
+    #     if ('RCaMP' in self.peak_properties and 'GCaMP' in self.peak_properties):  # checks if RCaMP and GCaMP both exist
+    #             ind_G = 0  # starts GCaMP index count at first index 0
+    #             for ind_R in range(len(self.peak_properties['RCaMP']['peaks'])):
+    #                 time_RCaMP = self.peak_properties['RCaMP']['peaks'][ind_R]  # index of when peak happens for each peak in RCaMP
+    #                 while ind_G < len(self.peak_properties['GCaMP']['peaks']):  # while there's still indeces left in GCaMP array
+    #                     time_GCaMP = self.peak_properties['GCaMP']['peaks'][ind_G]  # index of when peak happens for each peak in RCaMP
+    #                     if time_GCaMP > time_RCaMP:  # if GCaMP peak index follows RCaMP (which it should for latency)
+    #                         if time_GCaMP - time_RCaMP <= 10:  # if the difference is smaller than 10
+    #                             # add time to latency
+    #                             latency.append(self.Timestamps['GCaMP'][time_GCaMP] - self.Timestamps['RCaMP'][time_RCaMP])
+    #                             # augment GCaMP to next index so it's not reused
+    #                             ind_G += 1
+    #                             # break out of while loop, move to next RCaMP entry
+    #                             break
+    #                         else:  # if the difference is greater than 10, then move on to next RCaMP entry
+    #                             break
+    #                     else:  # GCaMP index precedes RCaMP, need to move it up
+    #                         ind_G += 1  # increase index to the next one
+    #     self.peak_properties['latency'] = latency
 
 
 # %%
@@ -1143,13 +1148,16 @@ class fiberPhotometryExperiment:
     #other issue: visual check peaks doesn't work
 
 
-    M1 = fiberPhotometryCurve('/Users/michellebuzharsky/Downloads/spont_fc/M1.csv', **{'treatment': 'ChR2', 'task': 'FC', 'keystroke_offset': 1274.41616})
-    M2 = fiberPhotometryCurve('/Users/michellebuzharsky/Downloads/spont_fc/M2.csv', **{'treatment': 'ChR2', 'task': 'FC', 'keystroke_offset': 1903.95312})
-    M3 = fiberPhotometryCurve('/Users/michellebuzharsky/Downloads/spont_fc/M3.csv', **{'treatment': 'ChR2', 'task': 'FC', 'keystroke_offset': 2672.332256})
-    M4 = fiberPhotometryCurve('/Users/michellebuzharsky/Downloads/spont_fc/M4.csv', **{'treatment': 'ChR2', 'task': 'FC', 'keystroke_offset': 3406.342624})
-    M5 = fiberPhotometryCurve('/Users/michellebuzharsky/Downloads/spont_fc/M5.csv', **{'treatment': 'ChR2', 'task': 'FC', 'keystroke_offset': 3952.073312})
+    #M1 = fiberPhotometryCurve('/Users/michellebuzharsky/Downloads/bla_c4_fc/M1.csv', **{'treatment': 'ChR2', 'task': 'FC', 'keystroke_offset': 993.661536})
+    #M2 = fiberPhotometryCurve('/Users/michellebuzharsky/Downloads/bla_c4_fc/M2.csv', **{'treatment': 'ChR2', 'task': 'FC', 'keystroke_offset': 1555.202784})
+    c4_M3 = fiberPhotometryCurve('/Users/michellebuzharsky/Downloads/bla_c4_fc/M3.csv', **{'treatment': 'ChR2', 'task': 'FC', 'keystroke_offset': 2096.197152})
+    #M4 = fiberPhotometryCurve('/Users/michellebuzharsky/Downloads/bla_c4_fc/M4.csv', **{'treatment': 'ChR2', 'task': 'FC', 'keystroke_offset': 2639.423776})
+
+    #c3_M1 = fiberPhotometryCurve('/Users/michellebuzharsky/Downloads/bla_c3_fc/M1.csv', **{'treatment': 'ChR2', 'task': 'FC', 'keystroke_offset': 1358.914272})
+    #c3_M2 = fiberPhotometryCurve('/Users/michellebuzharsky/Downloads/bla_c3_fc/M2.csv', **{'treatment': 'ChR2', 'task': 'FC', 'keystroke_offset': 1967.70016})
+    c3_M3 = fiberPhotometryCurve('/Users/michellebuzharsky/Downloads/bla_c3_fc/M3.csv', **{'treatment': 'ChR2', 'task': 'FC', 'keystroke_offset': 2541.161408})
+    c3_M4 = fiberPhotometryCurve('/Users/michellebuzharsky/Downloads/bla_c3_fc/M4.csv', **{'treatment': 'ChR2', 'task': 'FC', 'keystroke_offset': 3063.085984})
 
 
 
-
-    #cohort = fiberPhotometryExperiment(m1, m2, m3)
+    cohort = fiberPhotometryExperiment(c4_M3, c3_M3, c3_M4)
