@@ -407,8 +407,8 @@ class fiberPhotometryCurve:
         peak_properties = {}
         if not neg:
             for GECI, sig in self.DF_F_Signals.items():
-                peaks, properties = find_peaks(sig, height=1.0, distance=131, width=25,
-                                               rel_height=0.95)  # height=1.0, distance=130, prominence=0.5, width=25, rel_height=0.90)
+                peaks, properties = find_peaks(sig, height=np.std(sig), distance=131, width=25,
+                                               rel_height=0.5)  # height=1.0, distance=130, prominence=0.5, width=25, rel_height=0.90)
                 properties['peaks'] = peaks
                 properties['areas_under_curve'] = self.calc_area(properties['left_bases'], properties['right_bases'],
                                                                  self.DF_F_Signals[GECI])
@@ -416,7 +416,7 @@ class fiberPhotometryCurve:
                 peak_properties[GECI] = properties
         else:
             for GECI, sig in self.DF_F_Signals.items():
-                peaks, properties = find_peaks(-sig, height=1.0, distance=131, width=25, rel_height=0.95)
+                peaks, properties = find_peaks(-sig, height=np.std(sig), distance=131, width=25, rel_height=0.5)
                 properties['peaks'] = peaks
                 properties['areas_under_curve'] = self.calc_area(properties['left_bases'], properties['right_bases'],
                                                                  self.DF_F_Signals[GECI])
