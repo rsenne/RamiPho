@@ -100,7 +100,7 @@ class fiberPhotometryCurve:
 
             while self.fp_df['LedState'].value_counts()[1] != self.fp_df['LedState'].value_counts()[2] or \
                     self.fp_df['LedState'].value_counts()[2] != self.fp_df['LedState'].value_counts()[4]:
-                if(self.fp_df['LedState'].value_counts()[1]).value
+                #
                 self.fp_df.drop(self.fp_df.index[-1], axis=0, inplace=True)
 
                 print(self.fp_df['LedState'].value_counts()[1])
