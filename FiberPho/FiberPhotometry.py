@@ -97,9 +97,12 @@ class fiberPhotometryCurve:
 
         # drop last row if timeseries are unequal
         try:
+
             while self.fp_df['LedState'].value_counts()[1] != self.fp_df['LedState'].value_counts()[2] or \
                     self.fp_df['LedState'].value_counts()[2] != self.fp_df['LedState'].value_counts()[4]:
+                if(self.fp_df['LedState'].value_counts()[1]).value
                 self.fp_df.drop(self.fp_df.index[-1], axis=0, inplace=True)
+
                 print(self.fp_df['LedState'].value_counts()[1])
                 print(self.fp_df['LedState'].value_counts()[2])
                 print(self.fp_df['LedState'].value_counts()[4])
@@ -682,7 +685,7 @@ class fiberPhotometryCurve:
             props = ['widths', 'areas_under_curve', 'peak_heights', 'total_events']
         condensed_props = {}
         for signal in self.peak_properties: #for the different wavelengthers (GCaMP, RCaMP, Isobestic)
-            print(self.peak_properties[signal])
+            #print(self.peak_properties[signal])
             #calculates total number of events and adds to peak properties dictionary
             self.peak_properties[signal]['total_events'] = len(self.peak_properties[signal]['peak_heights'])
             condensed_props.update(
@@ -1147,17 +1150,23 @@ class fiberPhotometryExperiment:
     #issue: negative peak properties array populated with GCaMP and RCaMP, not peak_properties
     #other issue: visual check peaks doesn't work
 
+    #opto bois fc shock chr2
+    m1 = fiberPhotometryCurve('/Users/michellebuzharsky/Downloads/opto_final_fc/m1.csv', **{'treatment': 'ChR2', 'task': 'FC', 'keystroke': 333.83184})
+    # m2 = fiberPhotometryCurve('/Users/michellebuzharsky/Downloads/opto_final_fc/m2.csv', **{'treatment': 'ChR2', 'task': 'FC', 'keystroke': 1048.644864})
+    # m3 = fiberPhotometryCurve('/Users/michellebuzharsky/Downloads/opto_final_fc/m3.csv', **{'treatment': 'ChR2', 'task': 'FC', 'keystroke': 1644.654624})
+    # m4 = fiberPhotometryCurve('/Users/michellebuzharsky/Downloads/opto_final_fc/m4.csv', **{'treatment': 'ChR2', 'task': 'FC', 'keystroke': 2220.480448})
+    # m5 = fiberPhotometryCurve('/Users/michellebuzharsky/Downloads/opto_final_fc/m5.csv', **{'treatment': 'ChR2', 'task': 'FC', 'keystroke': 2804.140576})
+    # m6 = fiberPhotometryCurve('/Users/michellebuzharsky/Downloads/opto_final_fc/m6.csv', **{'treatment': 'ChR2', 'task': 'FC', 'keystroke': 3367.9992})
+    # m7 = fiberPhotometryCurve('/Users/michellebuzharsky/Downloads/opto_final_fc/m7.csv',
+    #                           **{'treatment': 'ChR2', 'task': 'FC', 'keystroke': 3934.82928})
+    # m8 = fiberPhotometryCurve('/Users/michellebuzharsky/Downloads/opto_final_fc/m8.csv',
+    #                           **{'treatment': 'ChR2', 'task': 'FC', 'keystroke': 4463.946304})
+    # m9 = fiberPhotometryCurve('/Users/michellebuzharsky/Downloads/opto_final_fc/m9.csv',
+    #                           **{'treatment': 'ChR2', 'task': 'FC', 'keystroke': 4985.380768})
+    # m10 = fiberPhotometryCurve('/Users/michellebuzharsky/Downloads/opto_final_fc/m10.csv',
+    #                           **{'treatment': 'ChR2', 'task': 'FC', 'keystroke': 5512.40848})
 
-    #M1 = fiberPhotometryCurve('/Users/michellebuzharsky/Downloads/bla_c4_fc/M1.csv', **{'treatment': 'ChR2', 'task': 'FC', 'keystroke_offset': 993.661536})
-    #M2 = fiberPhotometryCurve('/Users/michellebuzharsky/Downloads/bla_c4_fc/M2.csv', **{'treatment': 'ChR2', 'task': 'FC', 'keystroke_offset': 1555.202784})
-    c4_M3 = fiberPhotometryCurve('/Users/michellebuzharsky/Downloads/bla_c4_fc/M3.csv', **{'treatment': 'ChR2', 'task': 'FC', 'keystroke_offset': 2096.197152})
-    #M4 = fiberPhotometryCurve('/Users/michellebuzharsky/Downloads/bla_c4_fc/M4.csv', **{'treatment': 'ChR2', 'task': 'FC', 'keystroke_offset': 2639.423776})
-
-    #c3_M1 = fiberPhotometryCurve('/Users/michellebuzharsky/Downloads/bla_c3_fc/M1.csv', **{'treatment': 'ChR2', 'task': 'FC', 'keystroke_offset': 1358.914272})
-    #c3_M2 = fiberPhotometryCurve('/Users/michellebuzharsky/Downloads/bla_c3_fc/M2.csv', **{'treatment': 'ChR2', 'task': 'FC', 'keystroke_offset': 1967.70016})
-    c3_M3 = fiberPhotometryCurve('/Users/michellebuzharsky/Downloads/bla_c3_fc/M3.csv', **{'treatment': 'ChR2', 'task': 'FC', 'keystroke_offset': 2541.161408})
-    c3_M4 = fiberPhotometryCurve('/Users/michellebuzharsky/Downloads/bla_c3_fc/M4.csv', **{'treatment': 'ChR2', 'task': 'FC', 'keystroke_offset': 3063.085984})
 
 
 
-    cohort = fiberPhotometryExperiment(c4_M3, c3_M3, c3_M4)
+    #cohort = fiberPhotometryExperiment(m1, m2, m3, m4, m5, m6, m7, m8, m9, m10)
