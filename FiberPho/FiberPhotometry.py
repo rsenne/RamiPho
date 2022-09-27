@@ -95,12 +95,17 @@ class fiberPhotometryCurve:
         else:
             pass
 
+        #michelle tries to solve frame skipping tries being the key word lol
+        if hasattr(self, 'frame_interpolate')
+            self.frame_inter()
+            print("frames have been interped")
+
         # drop last row if timeseries are unequal
         try:
 
             while self.fp_df['LedState'].value_counts()[1] != self.fp_df['LedState'].value_counts()[2] or \
                     self.fp_df['LedState'].value_counts()[2] != self.fp_df['LedState'].value_counts()[4]:
-                #
+
                 self.fp_df.drop(self.fp_df.index[-1], axis=0, inplace=True)
 
                 print(self.fp_df['LedState'].value_counts()[1])
@@ -757,32 +762,103 @@ class fiberPhotometryCurve:
                      self.Timestamps[signal][self.neg_peak_properties[signal]['peaks'][i]]) for i in
                         range(len(self.neg_peak_properties[signal]['peaks']) - 1)]
 
-    # def calc_latency(self):
-    #     """
-    #
-    #     :param self: self
-    #     :return: calculates latency and adds array to peak properties dictionary
-    #     """
-    #     latency = []
-    #     if ('RCaMP' in self.peak_properties and 'GCaMP' in self.peak_properties):  # checks if RCaMP and GCaMP both exist
-    #             ind_G = 0  # starts GCaMP index count at first index 0
-    #             for ind_R in range(len(self.peak_properties['RCaMP']['peaks'])):
-    #                 time_RCaMP = self.peak_properties['RCaMP']['peaks'][ind_R]  # index of when peak happens for each peak in RCaMP
-    #                 while ind_G < len(self.peak_properties['GCaMP']['peaks']):  # while there's still indeces left in GCaMP array
-    #                     time_GCaMP = self.peak_properties['GCaMP']['peaks'][ind_G]  # index of when peak happens for each peak in RCaMP
-    #                     if time_GCaMP > time_RCaMP:  # if GCaMP peak index follows RCaMP (which it should for latency)
-    #                         if time_GCaMP - time_RCaMP <= 10:  # if the difference is smaller than 10
-    #                             # add time to latency
-    #                             latency.append(self.Timestamps['GCaMP'][time_GCaMP] - self.Timestamps['RCaMP'][time_RCaMP])
-    #                             # augment GCaMP to next index so it's not reused
-    #                             ind_G += 1
-    #                             # break out of while loop, move to next RCaMP entry
-    #                             break
-    #                         else:  # if the difference is greater than 10, then move on to next RCaMP entry
-    #                             break
-    #                     else:  # GCaMP index precedes RCaMP, need to move it up
-    #                         ind_G += 1  # increase index to the next one
-    #     self.peak_properties['latency'] = latency
+    def calc_latency(self):
+        """
+
+        :param self: self
+        :return: calculates latency and adds array to peak properties dictionary
+        """
+        latency = []
+        latency_timepoint = []
+        if ('RCaMP' in self.peak_properties and 'GCaMP' in self.peak_properties):  # checks if RCaMP and GCaMP both exist
+                ind_G = 0  # starts GCaMP index count at first index 0
+                for ind_R in range(len(self.peak_properties['RCaMP']['peaks'])):
+                    time_RCaMP = self.peak_properties['RCaMP']['peaks'][ind_R]  # index of when peak happens for each peak in RCaMP
+                    while ind_G < len(self.peak_properties['GCaMP']['peaks']):  # while there's still indeces left in GCaMP array
+                        time_GCaMP = self.peak_properties['GCaMP']['peaks'][ind_G]  # index of when peak happens for each peak in RCaMP
+                        if time_GCaMP > time_RCaMP:  # if GCaMP peak index follows RCaMP (which it should for latency)
+                            if time_GCaMP - time_RCaMP <= 10:  # if the difference is smaller than 10
+                                # add time to latency
+                                latency.append(self.Timestamps['GCaMP'][time_GCaMP] - self.Timestamps['RCaMP'][time_RCaMP])
+                                #adds timepoint that RCaMP precedes the following GCaMP transient
+                                latency_timepoint.append(self.Timestamps['RCaMP'][time_RCaMP])
+                                # augment GCaMP to next index so it's not reused
+                                ind_G += 1
+                                # break out of while loop, move to next RCaMP entry
+                                break
+                            else:  # if the difference is greater than 10, then move on to next RCaMP entry
+                                break
+                        else:  # GCaMP index precedes RCaMP, need to move it up
+                            ind_G += 1  # increase index to the next one
+        self.peak_properties['latency'] = latency
+        self.peak_properties['latency_timepoint'] = latency_timepoint
+
+
+    def frame_inter(self):
+        """
+
+        :return: if frames are being skipped, interpolates missing frames
+        """
+
+        
+
+
+
+
+        #take 1
+        # #makes pattern series with first three (not including initial 7) LED States
+        # pattern = self.fp_df['LedState'][1:4]
+        # #if first and third led state are the same aka single color, get rid of last one
+        # if (pattern[1]) == (pattern[3]):
+        #     pattern = pattern[0:2]
+        # #for each frame in frame counter
+        # i=1
+        # while i < len(self.fp_df.FrameCounter)-1:
+        #     interp = False
+        #     #first loop, before frame skips
+        #     last_index = 0
+        #     last_LED = 1
+        #     second_last_index = 0
+        #     second_last_LED = 1
+        #     third_last_index = 0
+        #     third_last_LED = 1
+        #     #second loop, after frame skips
+        #     first_index = 0
+        #     first_LED = 1
+        #     second_first_index = 0
+        #     second_first_LED = 1
+        #     third_first_index = 0
+        #     third_first_LED = 1
+        #
+        #     #if next frame isn't one higher, need to interpolate
+        #     if self.fp_df.FrameCounter[i+1]-self.fp_df.FrameCounter[i] != 1:
+        #         last_index = i #last frame before skip
+        #         last_LED = self.fp_df['LEDState'][i] #led state that it stopped at
+        #         second_last_index = i - 1
+        #         second_last_LED = self.fp_df['LEDState'][i - 1]
+        #         if (len(pattern) == 3):#if dual color, need three
+        #             third_last_index = i-2
+        #             third_last_LED = self.fp_df['LEDState'][i-2]
+        #         i += 1 #increases to next index
+        #         interp = True
+        #     #if need to interp and the next two frames are correct (no more skips)
+        #     elif (interp == True and self.fp_df.FrameCounter[i+1]-self.fp_df.FrameCounter[i]== 1):
+        #         first_index = i
+        #         first_LED = self.fp_df['LEDState'][i]
+        #         second_first_index = i + 1
+        #         second_first_LED = self.fp_df['LEDState'][i + 1]
+        #         if (len(pattern) == 3):  # if dual color, need three
+        #             third_first_index = i + 2
+        #             third_first_LED = self.fp_df['LEDState'][i + 2]
+        #         skip_num = first_index - last_index - 1 #how many frames skipped
+        #         while (skip_num > 0):
+        #
+
+
+
+
+
+
 
 
 # %%
@@ -1152,11 +1228,11 @@ class fiberPhotometryExperiment:
 
     #opto bois fc shock chr2
     m1 = fiberPhotometryCurve('/Users/michellebuzharsky/Downloads/opto_final_fc/m1.csv', **{'treatment': 'ChR2', 'task': 'FC', 'keystroke': 333.83184})
-    # m2 = fiberPhotometryCurve('/Users/michellebuzharsky/Downloads/opto_final_fc/m2.csv', **{'treatment': 'ChR2', 'task': 'FC', 'keystroke': 1048.644864})
-    # m3 = fiberPhotometryCurve('/Users/michellebuzharsky/Downloads/opto_final_fc/m3.csv', **{'treatment': 'ChR2', 'task': 'FC', 'keystroke': 1644.654624})
-    # m4 = fiberPhotometryCurve('/Users/michellebuzharsky/Downloads/opto_final_fc/m4.csv', **{'treatment': 'ChR2', 'task': 'FC', 'keystroke': 2220.480448})
-    # m5 = fiberPhotometryCurve('/Users/michellebuzharsky/Downloads/opto_final_fc/m5.csv', **{'treatment': 'ChR2', 'task': 'FC', 'keystroke': 2804.140576})
-    # m6 = fiberPhotometryCurve('/Users/michellebuzharsky/Downloads/opto_final_fc/m6.csv', **{'treatment': 'ChR2', 'task': 'FC', 'keystroke': 3367.9992})
+    m2 = fiberPhotometryCurve('/Users/michellebuzharsky/Downloads/opto_final_fc/m2.csv', **{'treatment': 'ChR2', 'task': 'FC', 'keystroke': 1048.644864})
+    m3 = fiberPhotometryCurve('/Users/michellebuzharsky/Downloads/opto_final_fc/m3.csv', **{'treatment': 'ChR2', 'task': 'FC', 'keystroke': 1644.654624})
+    m4 = fiberPhotometryCurve('/Users/michellebuzharsky/Downloads/opto_final_fc/m4.csv', **{'treatment': 'ChR2', 'task': 'FC', 'keystroke': 2220.480448})
+    m5 = fiberPhotometryCurve('/Users/michellebuzharsky/Downloads/opto_final_fc/m5.csv', **{'treatment': 'ChR2', 'task': 'FC', 'keystroke': 2804.140576})
+    m6 = fiberPhotometryCurve('/Users/michellebuzharsky/Downloads/opto_final_fc/m6.csv', **{'treatment': 'ChR2', 'task': 'FC', 'keystroke': 3367.9992})
     # m7 = fiberPhotometryCurve('/Users/michellebuzharsky/Downloads/opto_final_fc/m7.csv',
     #                           **{'treatment': 'ChR2', 'task': 'FC', 'keystroke': 3934.82928})
     # m8 = fiberPhotometryCurve('/Users/michellebuzharsky/Downloads/opto_final_fc/m8.csv',
