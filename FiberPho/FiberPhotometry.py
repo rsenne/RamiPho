@@ -96,9 +96,9 @@ class fiberPhotometryCurve:
             pass
 
         #michelle tries to solve frame skipping tries being the key word lol
-        if hasattr(self, 'frame_interpolate')
-            self.frame_inter()
-            print("frames have been interped")
+        #if hasattr(self, 'frame_interpolate')
+        index1, index2 = self.frame_inter()
+        print("indexes are", index1, index2)
 
         # drop last row if timeseries are unequal
         try:
@@ -108,16 +108,18 @@ class fiberPhotometryCurve:
 
                 self.fp_df.drop(self.fp_df.index[-1], axis=0, inplace=True)
 
-                print(self.fp_df['LedState'].value_counts()[1])
-                print(self.fp_df['LedState'].value_counts()[2])
-                print(self.fp_df['LedState'].value_counts()[4])
+                # print(self.fp_df['LedState'].value_counts()[1])
+                # print(self.fp_df['LedState'].value_counts()[2])
+                # print(self.fp_df['LedState'].value_counts()[4])
         except KeyError:
             while self.fp_df['LedState'].value_counts()[1] != self.fp_df['LedState'].value_counts()[2]:
                 self.fp_df.drop(self.fp_df.index[-1], axis=0, inplace=True)
         except:
             while self.fp_df['LedState'].value_counts()[1] != self.fp_df['LedState'].value_counts()[4]:
                 self.fp_df.drop(self.fp_df.index[-1], axis=0, inplace=True)
-
+        print(self.fp_df['LedState'].value_counts()[1])
+        print(self.fp_df['LedState'].value_counts()[2])
+        print(self.fp_df['LedState'].value_counts()[4])
         if 2 and 4 in self.fp_df.LedState.values:
             self.__DUAL_COLOR = True
         else:
@@ -797,62 +799,33 @@ class fiberPhotometryCurve:
     def frame_inter(self):
         """
 
-        :return: if frames are being skipped, interpolates missing frames
+        :return: if frames are being skipped, returns last consecutive frame and first frame after skips
         """
 
-        
+        #for each frame in frame counter
+        print("now here")
+        i=1
+        interp = False
+        index1 = 0
+        index2 = 0
+        while i < len(self.fp_df.FrameCounter)-1:
 
 
+            #if next frame isn't one higher, need to interpolate
+            if self.fp_df.FrameCounter[i+1]-self.fp_df.FrameCounter[i] != 1:
+                print("i is " + str(i))
+                index1 = self.fp_df.FrameCounter[i] #last frame before skip
+                i += 1 #increases to next index
+                interp = True
+            #if need to interp and the next two frames are correct (no more skips)
+            elif (interp == True and self.fp_df.FrameCounter[i+1]-self.fp_df.FrameCounter[i]== 1):
+                index2 = self.fp_df.FrameCounter[i]
+                print("about to return")
+                return index1, index2
+            else:
+                i += 1
+        return index1, index2
 
-
-        #take 1
-        # #makes pattern series with first three (not including initial 7) LED States
-        # pattern = self.fp_df['LedState'][1:4]
-        # #if first and third led state are the same aka single color, get rid of last one
-        # if (pattern[1]) == (pattern[3]):
-        #     pattern = pattern[0:2]
-        # #for each frame in frame counter
-        # i=1
-        # while i < len(self.fp_df.FrameCounter)-1:
-        #     interp = False
-        #     #first loop, before frame skips
-        #     last_index = 0
-        #     last_LED = 1
-        #     second_last_index = 0
-        #     second_last_LED = 1
-        #     third_last_index = 0
-        #     third_last_LED = 1
-        #     #second loop, after frame skips
-        #     first_index = 0
-        #     first_LED = 1
-        #     second_first_index = 0
-        #     second_first_LED = 1
-        #     third_first_index = 0
-        #     third_first_LED = 1
-        #
-        #     #if next frame isn't one higher, need to interpolate
-        #     if self.fp_df.FrameCounter[i+1]-self.fp_df.FrameCounter[i] != 1:
-        #         last_index = i #last frame before skip
-        #         last_LED = self.fp_df['LEDState'][i] #led state that it stopped at
-        #         second_last_index = i - 1
-        #         second_last_LED = self.fp_df['LEDState'][i - 1]
-        #         if (len(pattern) == 3):#if dual color, need three
-        #             third_last_index = i-2
-        #             third_last_LED = self.fp_df['LEDState'][i-2]
-        #         i += 1 #increases to next index
-        #         interp = True
-        #     #if need to interp and the next two frames are correct (no more skips)
-        #     elif (interp == True and self.fp_df.FrameCounter[i+1]-self.fp_df.FrameCounter[i]== 1):
-        #         first_index = i
-        #         first_LED = self.fp_df['LEDState'][i]
-        #         second_first_index = i + 1
-        #         second_first_LED = self.fp_df['LEDState'][i + 1]
-        #         if (len(pattern) == 3):  # if dual color, need three
-        #             third_first_index = i + 2
-        #             third_first_LED = self.fp_df['LEDState'][i + 2]
-        #         skip_num = first_index - last_index - 1 #how many frames skipped
-        #         while (skip_num > 0):
-        #
 
 
 
@@ -1227,14 +1200,13 @@ class fiberPhotometryExperiment:
     #other issue: visual check peaks doesn't work
 
     #opto bois fc shock chr2
-    m1 = fiberPhotometryCurve('/Users/michellebuzharsky/Downloads/opto_final_fc/m1.csv', **{'treatment': 'ChR2', 'task': 'FC', 'keystroke': 333.83184})
-    m2 = fiberPhotometryCurve('/Users/michellebuzharsky/Downloads/opto_final_fc/m2.csv', **{'treatment': 'ChR2', 'task': 'FC', 'keystroke': 1048.644864})
-    m3 = fiberPhotometryCurve('/Users/michellebuzharsky/Downloads/opto_final_fc/m3.csv', **{'treatment': 'ChR2', 'task': 'FC', 'keystroke': 1644.654624})
-    m4 = fiberPhotometryCurve('/Users/michellebuzharsky/Downloads/opto_final_fc/m4.csv', **{'treatment': 'ChR2', 'task': 'FC', 'keystroke': 2220.480448})
-    m5 = fiberPhotometryCurve('/Users/michellebuzharsky/Downloads/opto_final_fc/m5.csv', **{'treatment': 'ChR2', 'task': 'FC', 'keystroke': 2804.140576})
-    m6 = fiberPhotometryCurve('/Users/michellebuzharsky/Downloads/opto_final_fc/m6.csv', **{'treatment': 'ChR2', 'task': 'FC', 'keystroke': 3367.9992})
-    # m7 = fiberPhotometryCurve('/Users/michellebuzharsky/Downloads/opto_final_fc/m7.csv',
-    #                           **{'treatment': 'ChR2', 'task': 'FC', 'keystroke': 3934.82928})
+    #m1 = fiberPhotometryCurve('/Users/michellebuzharsky/Downloads/opto_final_fc/m1.csv', **{'treatment': 'ChR2', 'task': 'FC', 'keystroke': 333.83184})
+    #m2 = fiberPhotometryCurve('/Users/michellebuzharsky/Downloads/opto_final_fc/m2.csv', **{'treatment': 'ChR2', 'task': 'FC', 'keystroke': 1048.644864})
+    #m3 = fiberPhotometryCurve('/Users/michellebuzharsky/Downloads/opto_final_fc/m3.csv', **{'treatment': 'ChR2', 'task': 'FC', 'keystroke': 1644.654624})
+    #m4 = fiberPhotometryCurve('/Users/michellebuzharsky/Downloads/opto_final_fc/m4.csv', **{'treatment': 'ChR2', 'task': 'FC', 'keystroke': 2220.480448})
+    #m5 = fiberPhotometryCurve('/Users/michellebuzharsky/Downloads/opto_final_fc/m5.csv', **{'treatment': 'ChR2', 'task': 'FC', 'keystroke': 2804.140576})
+    #m6 = fiberPhotometryCurve('/Users/michellebuzharsky/Downloads/opto_final_fc/m6.csv', **{'treatment': 'ChR2', 'task': 'FC', 'keystroke': 3367.9992})
+    # m7 = fiberPhotometryCurve('/Users/michellebuzharsky/Downloads/opto_final_fc/m7.csv', **{'treatment': 'ChR2', 'task': 'FC', 'keystroke': 3934.82928})
     # m8 = fiberPhotometryCurve('/Users/michellebuzharsky/Downloads/opto_final_fc/m8.csv',
     #                           **{'treatment': 'ChR2', 'task': 'FC', 'keystroke': 4463.946304})
     # m9 = fiberPhotometryCurve('/Users/michellebuzharsky/Downloads/opto_final_fc/m9.csv',
