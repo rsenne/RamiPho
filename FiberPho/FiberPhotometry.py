@@ -97,8 +97,7 @@ class fiberPhotometryCurve:
 
         #michelle tries to solve frame skipping tries being the key word lol
         #if hasattr(self, 'frame_interpolate')
-        index1, index2 = self.frame_inter()
-        print("indexes are", index1, index2)
+        index1, index2 = self.frame_inter(1)
 
         # drop last row if timeseries are unequal
         try:
@@ -796,15 +795,14 @@ class fiberPhotometryCurve:
         self.peak_properties['latency_timepoint'] = latency_timepoint
 
 
-    def frame_inter(self):
+    def frame_inter(self, start):
         """
 
         :return: if frames are being skipped, returns last consecutive frame and first frame after skips
         """
 
         #for each frame in frame counter
-        print("now here")
-        i=1
+        i=start
         interp = False
         index1 = 0
         index2 = 0
@@ -813,24 +811,21 @@ class fiberPhotometryCurve:
 
             #if next frame isn't one higher, need to interpolate
             if self.fp_df.FrameCounter[i+1]-self.fp_df.FrameCounter[i] != 1:
-                print("i is " + str(i))
                 index1 = self.fp_df.FrameCounter[i] #last frame before skip
                 i += 1 #increases to next index
                 interp = True
             #if need to interp and the next two frames are correct (no more skips)
             elif (interp == True and self.fp_df.FrameCounter[i+1]-self.fp_df.FrameCounter[i]== 1):
                 index2 = self.fp_df.FrameCounter[i]
-                print("about to return")
+                if i != (len(self.fp_df.FrameCounter))-2:
+                    self.frame_inter(start+i)
+                print("indexes are from " + str(index1) + " to " + str(index2))
                 return index1, index2
             else:
                 i += 1
+        if index1 != 0 and index2 != 0:
+            print("indexes are from " + str(index1) + " to " + str(index2))
         return index1, index2
-
-
-
-
-
-
 
 
 
@@ -1207,13 +1202,45 @@ class fiberPhotometryExperiment:
     #m5 = fiberPhotometryCurve('/Users/michellebuzharsky/Downloads/opto_final_fc/m5.csv', **{'treatment': 'ChR2', 'task': 'FC', 'keystroke': 2804.140576})
     #m6 = fiberPhotometryCurve('/Users/michellebuzharsky/Downloads/opto_final_fc/m6.csv', **{'treatment': 'ChR2', 'task': 'FC', 'keystroke': 3367.9992})
     # m7 = fiberPhotometryCurve('/Users/michellebuzharsky/Downloads/opto_final_fc/m7.csv', **{'treatment': 'ChR2', 'task': 'FC', 'keystroke': 3934.82928})
-    # m8 = fiberPhotometryCurve('/Users/michellebuzharsky/Downloads/opto_final_fc/m8.csv',
-    #                           **{'treatment': 'ChR2', 'task': 'FC', 'keystroke': 4463.946304})
+    # m8 = fiberPhotometryCurve('/Users/michellebuzharsky/Downloads/opto_final_fc/m8.csv', **{'treatment': 'ChR2', 'task': 'FC', 'keystroke': 4463.946304})
     # m9 = fiberPhotometryCurve('/Users/michellebuzharsky/Downloads/opto_final_fc/m9.csv',
     #                           **{'treatment': 'ChR2', 'task': 'FC', 'keystroke': 4985.380768})
     # m10 = fiberPhotometryCurve('/Users/michellebuzharsky/Downloads/opto_final_fc/m10.csv',
     #                           **{'treatment': 'ChR2', 'task': 'FC', 'keystroke': 5512.40848})
 
+    #m2r = fiberPhotometryCurve('/Users/michellebuzharsky/Downloads/opto_final_recall/m2r.csv', **{'treatment': 'ChR2', 'task': 'FC', 'keystroke': 954.073152})
+    #m4r = fiberPhotometryCurve('/Users/michellebuzharsky/Downloads/opto_final_recall/m4r.csv', **{'treatment': 'ChR2', 'task': 'FC', 'keystroke': 1553.182912})
+    #m6r = fiberPhotometryCurve('/Users/michellebuzharsky/Downloads/opto_final_recall/m6r.csv', **{'treatment': 'ChR2', 'task': 'FC', 'keystroke': 2184.957024})
+    #m8r = fiberPhotometryCurve('/Users/michellebuzharsky/Downloads/opto_final_recall/m8r.csv', **{'treatment': 'ChR2', 'task': 'FC', 'keystroke': 2815.176576})
+    #m9r = fiberPhotometryCurve('/Users/michellebuzharsky/Downloads/opto_final_recall/m9r.csv', **{'treatment': 'ChR2', 'task': 'FC', 'keystroke': 3455.964064})
+    #m10r = fiberPhotometryCurve('/Users/michellebuzharsky/Downloads/opto_final_recall/m10r.csv', **{'treatment': 'ChR2', 'task': 'FC', 'keystroke': 4043.76672})
+
+    #em1 = fiberPhotometryCurve('/Users/michellebuzharsky/Downloads/opto_eyfp_fc/M1.csv', **{'treatment': 'ChR2', 'task': 'FC', 'keystroke': 2069.237856})
+    #em2 = fiberPhotometryCurve('/Users/michellebuzharsky/Downloads/opto_eyfp_fc/M2.csv', **{'treatment': 'ChR2', 'task': 'FC', 'keystroke': 1219.886656})
+    #em3 = fiberPhotometryCurve('/Users/michellebuzharsky/Downloads/opto_eyfp_fc/M3.csv', **{'treatment': 'ChR2', 'task': 'FC', 'keystroke': 2617.520768})
+    #em4 = fiberPhotometryCurve('/Users/michellebuzharsky/Downloads/opto_eyfp_fc/M4.csv', **{'treatment': 'ChR2', 'task': 'FC', 'keystroke': 3191.672608})
+
+    #rm1 = fiberPhotometryCurve('/Users/michellebuzharsky/Downloads/opto_eyfp_recall/M1.csv', **{'treatment': 'ChR2', 'task': 'FC', 'keystroke': 1381.256864})
+    #rm2 = fiberPhotometryCurve('/Users/michellebuzharsky/Downloads/opto_eyfp_recall/M2.csv', **{'treatment': 'ChR2', 'task': 'FC', 'keystroke': 1985.686048})
+    #rm3 = fiberPhotometryCurve('/Users/michellebuzharsky/Downloads/opto_eyfp_recall/M3.csv', **{'treatment': 'ChR2', 'task': 'FC', 'keystroke': 2703.122944})
+    #rm4 = fiberPhotometryCurve('/Users/michellebuzharsky/Downloads/opto_eyfp_recall/M4.csv', **{'treatment': 'ChR2', 'task': 'FC', 'keystroke': 3318.184096})
+
+    #nm1 = fiberPhotometryCurve('/Users/michellebuzharsky/Downloads/opto_neutral_fc/m1.csv', **{'treatment': 'ChR2', 'task': 'FC', 'keystroke': 1042.076448})
+    #nm2 = fiberPhotometryCurve('/Users/michellebuzharsky/Downloads/opto_neutral_fc/m2.csv', **{'treatment': 'ChR2', 'task': 'FC', 'keystroke': 1600.014304})
+    #nm3 = fiberPhotometryCurve('/Users/michellebuzharsky/Downloads/opto_neutral_fc/m3.csv', **{'treatment': 'ChR2', 'task': 'FC', 'keystroke': 2242.315776})
+    #nm4 = fiberPhotometryCurve('/Users/michellebuzharsky/Downloads/opto_neutral_fc/m4.csv', **{'treatment': 'ChR2', 'task': 'FC', 'keystroke': 2785.83808})
+    #nm5 = fiberPhotometryCurve('/Users/michellebuzharsky/Downloads/opto_neutral_fc/m5.csv', **{'treatment': 'ChR2', 'task': 'FC', 'keystroke': 3544.831744})
+    #nm6 = fiberPhotometryCurve('/Users/michellebuzharsky/Downloads/opto_neutral_fc/m6.csv', **{'treatment': 'ChR2', 'task': 'FC', 'keystroke': 4247.564736})
+    #nm9 = fiberPhotometryCurve('/Users/michellebuzharsky/Downloads/opto_neutral_fc/m9.csv', **{'treatment': 'ChR2', 'task': 'FC', 'keystroke': 6476.010048})
+
+    #nrm1 = fiberPhotometryCurve('/Users/michellebuzharsky/Downloads/opto_neutral_recall/m1.csv', **{'treatment': 'ChR2', 'task': 'FC', 'keystroke': 457.491616})
+    #nrm2 = fiberPhotometryCurve('/Users/michellebuzharsky/Downloads/opto_neutral_recall/m2.csv', **{'treatment': 'ChR2', 'task': 'FC', 'keystroke': 1044.086368})
+    #nrm3 = fiberPhotometryCurve('/Users/michellebuzharsky/Downloads/opto_neutral_recall/m3.csv', **{'treatment': 'ChR2', 'task': 'FC', 'keystroke': 2250.171232})
+    #nrm4 = fiberPhotometryCurve('/Users/michellebuzharsky/Downloads/opto_neutral_recall/m4.csv', **{'treatment': 'ChR2', 'task': 'FC', 'keystroke': 2250.171232})
+    #nrm5 = fiberPhotometryCurve('/Users/michellebuzharsky/Downloads/opto_neutral_recall/m5.csv', **{'treatment': 'ChR2', 'task': 'FC', 'keystroke': 3001.296864})
+    #nrm6 = fiberPhotometryCurve('/Users/michellebuzharsky/Downloads/opto_neutral_recall/m6.csv', **{'treatment': 'ChR2', 'task': 'FC', 'keystroke': 3001.296864})
+
+    #nrm9 = fiberPhotometryCurve('/Users/michellebuzharsky/Downloads/opto_neutral_recall/m9.csv', **{'treatment': 'ChR2', 'task': 'FC', 'keystroke': 5779.047616})
 
 
 
