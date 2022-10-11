@@ -19,7 +19,7 @@ __all__ = ["fiberPhotometryCurve", "fiberPhotometryExperiment"]
 
 
 class fiberPhotometryCurve:
-    def __init__(self, npm_file: str, **kwargs):
+    def __init__(self, npm_file: str, regress=False, **kwargs):
         """
         :param npm_file: str Path to csv fiber photometry file gathered using a neurophotometrics fp3002 rig and bonsai software
         :param behavioral_data: Path(s) to csv files, either deeplabcut or anymaze, for doing behavioral analysis
@@ -63,7 +63,8 @@ class fiberPhotometryCurve:
                                       getattr(self, 'interpolate', True), getattr(self, 'int_f', 100),
                                       getattr(self, 'threshold', .6))
 
-            # creates a numpy array as a value for the velocity and acceleration, taken from velocity and acceleration columns of df
+            # creates a numpy array as a value for the velocity and acceleration, taken from velocity and
+            # acceleration columns of df
             self.behavioral_data['DLC']['velocity'] = df['velocity'].to_numpy()
             self.behavioral_data['DLC']['acceleration'] = df['acceleration'].to_numpy()
             # add kwargs
@@ -187,6 +188,14 @@ class fiberPhotometryCurve:
         self.DF_F_Signals, self.DF_Z_Signals = self.process_data()
         self.peak_properties = self.find_signal()
         self.neg_peak_properties = self.find_signal(neg=True)
+        if regress:
+            if self.__DUAL_COLOR:
+                self.DF_F_Signals['GCaMP'], self.DF_Z_Signals['GCaMP'] = self.fit_regression('GCaMP')
+                self.DF_F_Signals['RCaMP'], self.DF_Z_Signals['RCaMP'] = self.fit_regression('RCaMP')
+            elif 2 in self.fp_df.LedState.values:
+                self.DF_F_Signals['GCaMP'], self.DF_Z_Signals['GCaMP'] = self.fit_regression('GCaMP')
+            else:
+                self.DF_F_Signals['RCaMP'], self.DF_Z_Signals['RCaMP'] = self.fit_regression('RCaMP')
 
     def __iter__(self):
         return iter(list(self.DF_F_Signals.values()))
@@ -272,6 +281,19 @@ class fiberPhotometryCurve:
     def calc_area(l_index, r_index, timeseries):
         areas = np.asarray([simpson(timeseries[i:j]) for i, j in zip(l_index, r_index)])
         return areas
+
+    def fit_regression(self, signal):
+        endog = self.DF_F_Signals[signal]
+        exog = sm.add_constant(self.DF_F_Signals['Isobestic_' + signal])
+        model = sm.OLS(endog, exog)
+        results = model.fit()
+        endogz = self.DF_Z_Signals[signal]
+        exogz = sm.add_constant(self.DF_Z_Signals['Isobestic_' + signal])
+        modelz = sm.OLS(endogz, exogz)
+        resultsz = modelz.fit()
+        scaled_iso_F = self.DF_F_Signals[signal] - results.predict(exog)
+        scaled_iso_Z = self.DF_Z_Signals[signal] - resultsz.predict(exog)
+        return scaled_iso_F, scaled_iso_Z
 
     def process_data(self):  # correct baseline, smoothed with uniform filter
         signals = [signal for signal in self.Signal.values()]  # list of raw signals
@@ -892,7 +914,7 @@ class fiberPhotometryExperiment:
     #     return averaged_trace, average_time[index_left_bound:index_right_bound], ci
 
     def mt_event_triggered_average(self, curve, event_times, window, group, ci_type='t', shuffle=False,
-                                   timepoint=False):
+                                   timepoint=True):
         max_ind = np.min(
             [len(x) for x in [t.Timestamps[curve].tolist() for t in next(iter(getattr(self, group).values()))]])
         time_array = np.array(
@@ -941,8 +963,12 @@ class fiberPhotometryExperiment:
 
     def bootstrap_ci(self, vector_array, sig, niter=1000):
         rng = np.random.default_rng()
-        random_bst_vec = rng.integers(low=0, high=int(np.size(vector_array, 0)), size=niter)
-        bootstrap_mat = vector_array[random_bst_vec]
+        bootstrap_mat = np.zeros(shape=(niter, np.size(vector_array, 1)))
+        for i in range(niter):
+            random_bst_vec = rng.integers(low=0, high=int(np.size(vector_array, 0)), size=np.size(vector_array, 0))
+            sampled_mat = vector_array[random_bst_vec]
+            average_trace = np.average(sampled_mat, axis=0)
+            bootstrap_mat[i, :] = average_trace
         ci_lower_upper = np.percentile(bootstrap_mat, [sig / 2, 100 - (sig / 2)], axis=0)
         return ci_lower_upper
 

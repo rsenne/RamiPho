@@ -148,3 +148,4 @@ analysis_script.ipynb
 *.xml
 *.iml
 .idea/misc.xml
+.idea
