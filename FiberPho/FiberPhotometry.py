@@ -732,7 +732,7 @@ class fiberPhotometryCurve:
         return indice_extrema
 
 
-# %%
+
 class fiberPhotometryExperiment:
     def __init__(self, *args):
         self.treatment = {}
