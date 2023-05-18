@@ -149,3 +149,7 @@ analysis_script.ipynb
 *.iml
 .idea/misc.xml
 .idea
+FiberPho/analysis_file_ma681.py
+FiberPho/vCA1_analysis.py
+*.svg
+ssm/
