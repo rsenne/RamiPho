@@ -34,7 +34,7 @@ class bSpline:
                 for ind in left_inds:
                     spl_map[i, ind:ind + np.shape(self.b)[0]] = self.b[:, i]
             except ValueError:
-                for ind in left_inds[:-2]:
+                for ind in left_inds[:-3]:
                     spl_map[i, ind:ind + np.shape(self.b)[0]] = self.b[:, i]
 
 

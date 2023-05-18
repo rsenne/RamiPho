@@ -343,9 +343,9 @@ class fiberPhotometryCurve:
                 df_f_signals[i] = self._als_detrend(df_f_signals[i])
                 df_z_signals[i] = self._als_detrend(df_z_signals[i])
         # smoothed like a baby's bottom
-        smoothed_f_signals = [self.kalman_filter(timeseries) for timeseries in
+        smoothed_f_signals = [self.smooth(timeseries) for timeseries in
                               df_f_signals]
-        smoothed_z_signals = [self.kalman_filter(timeseries) for timeseries in
+        smoothed_z_signals = [self.smooth(timeseries) for timeseries in
                               df_z_signals]
         return {identity: signal for identity, signal in zip(self.Signal.keys(), smoothed_f_signals)}, {identity: signal
                                                                                                         for
