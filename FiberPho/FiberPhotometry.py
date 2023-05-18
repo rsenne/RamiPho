@@ -14,6 +14,8 @@ from scipy.interpolate import splrep, splev
 from scipy.ndimage import uniform_filter1d
 from scipy.signal import find_peaks
 from scipy.sparse.linalg import spsolve
+import pykalman
+
 
 __all__ = ["fiberPhotometryCurve", "fiberPhotometryExperiment"]
 
@@ -239,6 +241,42 @@ class fiberPhotometryCurve:
             z = spsolve(Z, w * y)
             w = p * (y > z) + (1 - p) * (y < z)
         return y - z
+    
+    # @staticmethod
+    # def kalman_filter(signal, visual_check=False):
+    #     n = len(signal)
+    #     obs_var = np.var(signal)
+    #     pacf = sm.tsa.pacf(signal, nlags=5)
+    #     pacf_low = -1.96*(n**(-1/2))
+    #     pacf_high = 1.96*(n**(-1/2))
+    #     try:
+    #         sig_low = np.max(np.where(pacf <= pacf_low)[0])
+    #     except ValueError:
+    #         sig_low = 0
+    #     try:
+    #         sig_high = np.max(np.where(pacf >= pacf_high)[0])
+    #     except:
+    #         sig_high = 0
+    #     total_lags = np.max((sig_low, sig_high))
+    #     print(total_lags)
+    #     ar_model = sm.tsa.ARIMA(signal, order=(total_lags, 0, 0), trend='n').fit()
+    #     print(ar_model.summary())
+
+    #     A = np.zeros(shape=(total_lags, total_lags))
+    #     A[0, :] = ar_model.params[:-1]
+    #     H = np.zeros(shape=(1, total_lags))
+    #     H[0, 0] = 1
+    #     Q = np.eye(total_lags) * ar_model.params[-1]
+    #     R = np.array([obs_var])
+
+    #     initial_state_covariance = np.zeros(shape=(total_lags, total_lags))
+    #     initial_state_mean = np.zeros(total_lags)
+
+    #     kf = pykalman.KalmanFilter(transition_matrices=A, observation_matrices=H, transition_covariance=Q, observation_covariance=R, initial_state_mean=initial_state_mean, initial_state_covariance=initial_state_covariance)
+    #     means, covs = kf.smooth(signal)
+    #     print('Yay, I worked!')
+    #     plt.plot(means[:, 0])
+    #     return means[:, 0]
 
     @staticmethod
     def smooth(signal, kernel, visual_check=False):
@@ -305,9 +343,9 @@ class fiberPhotometryCurve:
                 df_f_signals[i] = self._als_detrend(df_f_signals[i])
                 df_z_signals[i] = self._als_detrend(df_z_signals[i])
         # smoothed like a baby's bottom
-        smoothed_f_signals = [self.smooth(timeseries, kernel=10) for timeseries in
+        smoothed_f_signals = [self.kalman_filter(timeseries) for timeseries in
                               df_f_signals]
-        smoothed_z_signals = [self.smooth(timeseries, kernel=10) for timeseries in
+        smoothed_z_signals = [self.kalman_filter(timeseries) for timeseries in
                               df_z_signals]
         return {identity: signal for identity, signal in zip(self.Signal.keys(), smoothed_f_signals)}, {identity: signal
                                                                                                         for
@@ -323,107 +361,6 @@ class fiberPhotometryCurve:
         res_fit = gaussian_model.fit()
         return res_fit
 
-    # def find_signal(self, neg=False):
-    #     """
-    #
-    #     :param neg: ?
-    #     :return: a peak property array based on scipy find_peak function
-    #     """
-    #
-    #     # creates empty peak properties dictionary
-    #     peak_properties = {}
-    #     if not neg:
-    #         for GECI, sig in self.DF_F_Signals.items():
-    #             # returns array of indices of  peaks, and properties dictionary
-    #             peaks, properties = find_peaks(sig, height=1.0, distance=131, width=25,
-    #                                            rel_height=0.50)  # height=1.0, distance=130, prominence=0.5, width=25, rel_height=0.90)
-    #             # adds array  of peak indices to properties dictionary
-    #             properties['peaks'] = peaks
-    #             # calculates area under the curve for each peak and adds to properties dictionary
-    #             properties['areas_under_curve'] = self.calc_area(properties['left_bases'], properties['right_bases'],
-    #                                                              self.DF_F_Signals[GECI])
-    #
-    #             # populates  the peak properties dictionary with properties nested dictionary for each GECI
-    #             properties['widths'] *= self._sample_time_
-    #             peak_properties[GECI] = properties
-    #             # michelle tries to do iei
-    #             # finds the inter event interval between each peak
-    #             iei = [(self.Timestamps[GECI][peak_properties[GECI]['peaks'][i + 1]] - self.Timestamps[GECI][
-    #                 peak_properties[GECI]['peaks'][i]]) for i in range(len(peak_properties[GECI]['peaks']) - 1)]
-    #             # adds iei  to peak properties dictionary
-    #             peak_properties[GECI]['inter_event_interval'] = iei
-    #
-    #             # mich tries to find latency
-    #             # if there's gcamp and rcamp, finds latency between peaks
-    #
-    #             # threshold for time between peaks to be considered
-    #         latency = []
-    #         if ('RCaMP' in peak_properties and 'GCaMP' in peak_properties):  # checks if RCaMP and GCaMP both exist
-    #             ind_G = 0  # starts GCaMP index count at first index 0
-    #             for ind_R in range(len(peak_properties['RCaMP']['peaks'])):
-    #                 time_RCaMP = peak_properties['RCaMP']['peaks'][
-    #                     ind_R]  # index of when peak happens for each peak in RCaMP
-    #                 while ind_G < len(
-    #                         peak_properties['GCaMP']['peaks']):  # while there's still indeces left in GCaMP array
-    #                     time_GCaMP = peak_properties['GCaMP']['peaks'][
-    #                         ind_G]  # index of when peak happens for each peak in RCaMP
-    #                     if time_GCaMP > time_RCaMP:  # if GCaMP peak index follows RCaMP (which it should for latency)
-    #                         if time_GCaMP - time_RCaMP <= 10:  # if the difference is smaller than 10
-    #                             # add time to latency
-    #                             latency.append(
-    #                                 self.Timestamps['GCaMP'][time_GCaMP] - self.Timestamps['RCaMP'][time_RCaMP])
-    #                             # augment GCaMP to next index so it's not reused
-    #                             ind_G += 1
-    #                             # break out of while loop, move to next RCaMP entry
-    #                             break
-    #                         else:  # if the difference is greater than 10, then move on to next RCaMP entry
-    #                             break
-    #                     else:  # GCaMP index precedes RCaMP, need to move it up
-    #                         ind_G += 1  # increase index to the next one
-    #
-    #
-    #     else:
-    #         for GECI, sig in self.DF_F_Signals.items():
-    #             peaks, properties = find_peaks(-sig, height=1.0, distance=131, width=25, rel_height=0.50)
-    #             properties['peaks'] = peaks
-    #             properties['areas_under_curve'] = self.calc_area(properties['left_bases'], properties['right_bases'],
-    #                                                              self.DF_F_Signals[GECI])
-    #             # michelle tries to do iei
-    #             # finds the inter event interval between each peak
-    #             properties['widths'] *= self._sample_time_
-    #             peak_properties[GECI] = properties
-    #             # finds the inter event interval between each peak
-    #             iei = [(self.Timestamps[GECI][peak_properties[GECI]['peaks'][i + 1]] - self.Timestamps[GECI][
-    #                 peak_properties[GECI]['peaks'][i]]) for i in range(len(peak_properties[GECI]['peaks']) - 1)]
-    #             # adds iei  to peak properties dictionary
-    #             peak_properties[GECI]['inter_event_interval'] = iei
-    #
-    #         latency = []
-    #         if ('RCaMP' in peak_properties and 'GCaMP' in peak_properties):  # checks if RCaMP and GCaMP both exist
-    #             ind_G = 0  # starts GCaMP index count at first index 0
-    #             for ind_R in range(len(peak_properties['RCaMP']['peaks'])):
-    #                 time_RCaMP = peak_properties['RCaMP']['peaks'][
-    #                     ind_R]  # index of when peak happens for each peak in RCaMP
-    #                 while ind_G < len(
-    #                         peak_properties['GCaMP']['peaks']):  # while there's still indeces left in GCaMP array
-    #                     time_GCaMP = peak_properties['GCaMP']['peaks'][
-    #                         ind_G]  # index of when peak happens for each peak in RCaMP
-    #                     if time_GCaMP > time_RCaMP:  # if GCaMP peak index follows RCaMP (which it should for latency)
-    #                         if time_GCaMP - time_RCaMP <= 10:  # if the difference is smaller than 10
-    #                             # add time to latency
-    #                             latency.append(
-    #                                 self.Timestamps['GCaMP'][time_GCaMP] - self.Timestamps['RCaMP'][time_RCaMP])
-    #                             # augment GCaMP to next index so it's not reused
-    #                             ind_G += 1
-    #                             # break out of while loop, move to next RCaMP entry
-    #                             break
-    #                         else:  # if the difference is greater than 10, then move on to next RCaMP entry
-    #                             break
-    #                     else:  # GCaMP index precedes RCaMP, need to move it up
-    #                         ind_G += 1  # increase index to the next one
-    #
-    #     peak_properties['latency'] = latency
-    #     return peak_properties
 
     def find_signal(self, neg=False):
         peak_properties = {}
@@ -529,7 +466,6 @@ class fiberPhotometryCurve:
             self.behavioral_data['Anymaze']['anymaze_df'].seconds, bins, include_lowest=True)
         anymaze_df = self.behavioral_data['Anymaze']['anymaze_df'].dropna()
         unique_bins = anymaze_df.bin.unique()
-
         freeze_time = np.zeros(shape=(len(bins) - 1,))
         if len(unique_bins) < len(bins) - 1:
             i = len(bins) - 1 - len(unique_bins)
@@ -730,7 +666,18 @@ class fiberPhotometryCurve:
         rolled_average = [np.average(np.diff(self.Signal[curve])[i:i + j]) for i in range(for_i)]
         indice_extrema = np.where(np.diff(rolled_average) < 0)[0] - 1
         return indice_extrema
-
+    
+    def metric_df(self):
+        if self.__DUAL_COLOR:
+            metric_df_gcamp = pd.DataFrame(self.peak_properties['GCaMP'])
+            metric_df_gcamp.loc[:, 'Timestamps'] = self.Timestamps['GCaMP'][self.peak_properties['GCaMP']['peaks']]
+            metric_df_rcamp = pd.DataFrame(self.peak_properties['RCaMP'])
+            metric_df_rcamp.loc[:, 'Timestamps'] = self.Timestamps['RCaMP'][self.peak_properties['RCaMP']['peaks']]
+            return metric_df_gcamp, metric_df_rcamp
+        else:
+            metric_df_gcamp = pd.DataFrame(self.peak_properties['GCaMP'])
+            metric_df_gcamp.loc[:, 'Timestamps'] = self.Timestamps['GCaMP'][self.peak_properties['GCaMP']['peaks']]
+            return metric_df_gcamp
 
 
 class fiberPhotometryExperiment:
@@ -854,6 +801,11 @@ class fiberPhotometryExperiment:
         sample2 = [x.condensed_stats[curve]['average' + '_' + metric] for x in s2]
         stat, pval = test(sample1, sample2)
         return stat, pval, sample1, sample2
+    
+    # def create_metric_df():
+    #     s1 = [y for y in next(iter(getattr(self, group1).values()))]
+    #     for i in s1:
+    #     return metric_df
 
     def raster(self, group, curve, a, b, colormap):
 
@@ -942,15 +894,20 @@ class fiberPhotometryExperiment:
                 trace_len = int(ind_plus) + int(ind_plus / 2)
                 part_traces = [vector_array[animal][indice - (int(ind_plus / 2)):int(indice + ind_plus)].tolist() for
                                indice in inds[animal]]
-                part_traces = [trace for trace in part_traces if len(trace) == trace_len]
+                part_traces = [x for x in part_traces if len(x)==trace_len]
+                eta = np.average(np.array(part_traces), axis=0)
+                mt_eta.append(eta)
             else:
                 part_traces = np.array(
                     [vector_array[animal][indice - (int(ind_plus / 2)):int(indice + ind_plus)].tolist() for indice in
                      inds[0]])
-            eta = np.average(np.array(part_traces), axis=0)
-            mt_eta.append(eta)
-        mt_eta = np.array(mt_eta)
+                eta = np.average(np.array(part_traces), axis=0)
+                mt_eta.append(eta)  
+            # eta = np.average(np.array(part_traces), axis=0)
+            # mt_eta.append(eta)
+        mt_eta = np.array(mt_eta) - np.median(mt_eta, keepdims=True, axis=1)
         av_tr = np.average(mt_eta, axis=0)
+        av_tr = av_tr - np.median(av_tr)
         if ci_type == 't':
             ci = 1.96 * np.std(mt_eta, axis=0) / np.sqrt(np.shape(mt_eta)[0])
         elif ci_type == 'bs':
@@ -1070,27 +1027,3 @@ class fiberPhotometryExperiment:
         axs.set_ylabel(y_axis)  # annies 'Animal ID'
         axs.set_zlabel(z_axis)  # timeseries/signal 'dF/F GCaMP'
         return
-
-    # def plot_stats(self):
-    # compare stats between groups
-
-    # Practice things
-    # engram_exp = fiberPhotometryExperiment(engram_recall_1, engram_recall_2, sham_recall_1, sham_recall_2)
-    # z = engram_exp.event_triggered_average('Recall-ChR2', 'GCaMP', 1, 40)
-
-    # fc_2 = fiberPhotometryCurve('/home/ryansenne/Data/Rebecca/Test_Pho_engram_ChR2_m2_FC.csv', None,
-    #                             **{'treatment': 'ChR2', 'task': 'FC'})
-
-    # fc_experiment = fiberPhotometryExperiment(fc_1, fc_2, fc_3, fc_4, fc_5, fc_6, fc_7, fc_8)
-
-    # z, z1, z2 = fc_experiment.event_triggered_average('GCaMP', 124, 10, 'FC-ChR2')
-    # fc_experiment.plot_eta('GCaMP', 124, 10, 'FC-ChR2', 'FC-eYFP')
-
-    # b_test = b_spline.bSpline(120, 3, 9)
-    # maps, dicts = b_test.create_spline_map([1100, 1650, 2200, 2800], len(fc_1.DF_F_Signals['GCaMP']))
-    # model = fc_1.fit_general_linear_model('GCaMP', dicts)
-    # model.predict(sm.add_constant(sm.add_constant(pd.DataFrame(dicts))))
-
-    # time = fc_1.Timestamps['GCaMP']
-    # my_behave_file = pd.read_csv('/Users/ryansenne/Desktop/Rebecca_Data/Engram_Round2_FC_Freeze - ChR2_m1.csv')
-    # x, y, z = fc_1.process_anymaze(my_behave_file, time)
