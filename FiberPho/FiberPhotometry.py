@@ -7,7 +7,6 @@ import pandas as pd
 import scipy.stats
 import seaborn as sb
 import statsmodels.api as sm
-# import FiberPho.b_spline
 from scipy import sparse
 from scipy.integrate import simpson
 from scipy.interpolate import splrep, splev
@@ -15,7 +14,6 @@ from scipy.ndimage import uniform_filter1d
 from scipy.signal import find_peaks
 from scipy.sparse.linalg import spsolve
 import pykalman
-
 
 __all__ = ["fiberPhotometryCurve", "fiberPhotometryExperiment"]
 
@@ -76,7 +74,8 @@ class fiberPhotometryCurve:
             df = pd.read_csv(getattr(self, 'anymaze_file'))
             anymaze_df, freeze_vector, inds_start, inds_end = self.process_anymaze(df, self.fp_df.Timestamp[
                 self.fp_df['LedState'] == 1])
-            # puts freeze vector array and start/end freezing inds from the process anymaze function into the Anymaze dictionary
+            # puts freeze vector array and start/end freezing inds from the process anymaze function into the Anymaze
+            # dictionary
             self.behavioral_data['Anymaze']['freeze_vector'] = freeze_vector
 
             self.behavioral_data['Anymaze']['start_freezing'] = inds_start  # start of freezing bouts
@@ -241,42 +240,7 @@ class fiberPhotometryCurve:
             z = spsolve(Z, w * y)
             w = p * (y > z) + (1 - p) * (y < z)
         return y - z
-    
-    # @staticmethod
-    # def kalman_filter(signal, visual_check=False):
-    #     n = len(signal)
-    #     obs_var = np.var(signal)
-    #     pacf = sm.tsa.pacf(signal, nlags=5)
-    #     pacf_low = -1.96*(n**(-1/2))
-    #     pacf_high = 1.96*(n**(-1/2))
-    #     try:
-    #         sig_low = np.max(np.where(pacf <= pacf_low)[0])
-    #     except ValueError:
-    #         sig_low = 0
-    #     try:
-    #         sig_high = np.max(np.where(pacf >= pacf_high)[0])
-    #     except:
-    #         sig_high = 0
-    #     total_lags = np.max((sig_low, sig_high))
-    #     print(total_lags)
-    #     ar_model = sm.tsa.ARIMA(signal, order=(total_lags, 0, 0), trend='n').fit()
-    #     print(ar_model.summary())
 
-    #     A = np.zeros(shape=(total_lags, total_lags))
-    #     A[0, :] = ar_model.params[:-1]
-    #     H = np.zeros(shape=(1, total_lags))
-    #     H[0, 0] = 1
-    #     Q = np.eye(total_lags) * ar_model.params[-1]
-    #     R = np.array([obs_var])
-
-    #     initial_state_covariance = np.zeros(shape=(total_lags, total_lags))
-    #     initial_state_mean = np.zeros(total_lags)
-
-    #     kf = pykalman.KalmanFilter(transition_matrices=A, observation_matrices=H, transition_covariance=Q, observation_covariance=R, initial_state_mean=initial_state_mean, initial_state_covariance=initial_state_covariance)
-    #     means, covs = kf.smooth(signal)
-    #     print('Yay, I worked!')
-    #     plt.plot(means[:, 0])
-    #     return means[:, 0]
 
     @staticmethod
     def smooth(signal, kernel, visual_check=False):
@@ -293,12 +257,6 @@ class fiberPhotometryCurve:
             plt.plot(signal)
             plt.plot(smooth_signal)
         return smooth_signal
-
-    @staticmethod
-    def b_smooth(signal, timeseries, s=500):
-        knot_parms = splrep(timeseries, signal, s=s)
-        smoothed_signal = splev(timeseries, knot_parms)
-        return smoothed_signal
 
     @staticmethod
     def _df_f(raw, kind="std"):
@@ -360,7 +318,6 @@ class fiberPhotometryCurve:
         gaussian_model = sm.GLM(endog=dep_var, exog=ind_var, family=sm.families.Gaussian())
         res_fit = gaussian_model.fit()
         return res_fit
-
 
     def find_signal(self, neg=False):
         peak_properties = {}
@@ -666,17 +623,21 @@ class fiberPhotometryCurve:
         rolled_average = [np.average(np.diff(self.Signal[curve])[i:i + j]) for i in range(for_i)]
         indice_extrema = np.where(np.diff(rolled_average) < 0)[0] - 1
         return indice_extrema
-    
-    def metric_df(self):
+
+    def metric_df(self, columns=None):
+        if columns is None:
+            columns = ['peaks', 'peak_heights', 'areas_under_curves', 'widths']
         if self.__DUAL_COLOR:
             metric_df_gcamp = pd.DataFrame(self.peak_properties['GCaMP'])
             metric_df_gcamp.loc[:, 'Timestamps'] = self.Timestamps['GCaMP'][self.peak_properties['GCaMP']['peaks']]
             metric_df_rcamp = pd.DataFrame(self.peak_properties['RCaMP'])
             metric_df_rcamp.loc[:, 'Timestamps'] = self.Timestamps['RCaMP'][self.peak_properties['RCaMP']['peaks']]
+            metric_df_gcamp, metric_df_rcamp = metric_df_gcamp[columns], metric_df_gcamp[columns]
             return metric_df_gcamp, metric_df_rcamp
         else:
             metric_df_gcamp = pd.DataFrame(self.peak_properties['GCaMP'])
             metric_df_gcamp.loc[:, 'Timestamps'] = self.Timestamps['GCaMP'][self.peak_properties['GCaMP']['peaks']]
+            metric_df_gcamp = metric_df_gcamp[columns]
             return metric_df_gcamp
 
 
@@ -801,7 +762,7 @@ class fiberPhotometryExperiment:
         sample2 = [x.condensed_stats[curve]['average' + '_' + metric] for x in s2]
         stat, pval = test(sample1, sample2)
         return stat, pval, sample1, sample2
-    
+
     # def create_metric_df():
     #     s1 = [y for y in next(iter(getattr(self, group1).values()))]
     #     for i in s1:
@@ -830,40 +791,6 @@ class fiberPhotometryExperiment:
         plt.show()
         return fig
 
-    # def st_event_triggered_average(self, curve, event_time, window, group, plot=False, timepoint=True):
-    #     time = [time.Timestamps[curve].tolist() for time in next(iter(getattr(self, group).values()))]
-    #     max_ind = np.min([len(x) for x in time])
-    #     time_array = np.array(
-    #         [time.Timestamps[curve][0:max_ind].tolist() for time in next(iter(getattr(self, group).values()))])
-    #     try:
-    #         average_time = np.average(time_array, axis=0)
-    #     except ZeroDivisionError:
-    #         average_time = np.zeros(shape=(1, len(time_array)))
-    #         average_time[0] = 0
-    #         average_time[1:] = np.average(time_array[1:], axis=0)
-    #     if timepoint:
-    #         ind = np.argmin(np.abs(average_time - event_time))
-    #     else:
-    #         ind = event_time
-    #     index_right_bound = np.argmin(np.abs(average_time - (event_time + window)))
-    #     index_left_bound = np.argmin(np.abs(average_time - (event_time - (window / 2))))
-    #     vector_array = np.array([vec.DF_F_Signals[curve][index_left_bound:index_right_bound].tolist() for vec in
-    #                              next(iter(getattr(self, group).values()))])
-    #     try:
-    #         averaged_trace = np.average(vector_array, axis=0)
-    #     except ZeroDivisionError:
-    #         averaged_trace = np.zeros(shape=(1, len(vector_array)))
-    #         averaged_trace[0] = 0
-    #         averaged_trace[1:] = np.average(vector_array[1:], axis=0)
-    #     ci = 1.96 * np.std(vector_array, axis=0) / np.sqrt(np.shape(vector_array)[0])
-    #     if plot:
-    #         fig, ax = plt.subplots()
-    #         plt.axvline(average_time[ind], linestyle='--', color='black')
-    #         ax.plot(average_time[index_left_bound:index_right_bound], averaged_trace)
-    #         ax.fill_between(average_time[index_left_bound: index_right_bound], (averaged_trace - ci),
-    #                         (averaged_trace + ci), color='b', alpha=0.1)
-    #         plt.show()
-    #     return averaged_trace, average_time[index_left_bound:index_right_bound], ci
 
     def mt_event_triggered_average(self, curve, event_times, window, group, ci_type='t', shuffle=False,
                                    timepoint=True):
@@ -894,7 +821,7 @@ class fiberPhotometryExperiment:
                 trace_len = int(ind_plus) + int(ind_plus / 2)
                 part_traces = [vector_array[animal][indice - (int(ind_plus / 2)):int(indice + ind_plus)].tolist() for
                                indice in inds[animal]]
-                part_traces = [x for x in part_traces if len(x)==trace_len]
+                part_traces = [x for x in part_traces if len(x) == trace_len]
                 eta = np.average(np.array(part_traces), axis=0)
                 mt_eta.append(eta)
             else:
@@ -902,8 +829,8 @@ class fiberPhotometryExperiment:
                     [vector_array[animal][indice - (int(ind_plus / 2)):int(indice + ind_plus)].tolist() for indice in
                      inds[0]])
                 eta = np.average(np.array(part_traces), axis=0)
-                mt_eta.append(eta)  
-            # eta = np.average(np.array(part_traces), axis=0)
+                mt_eta.append(eta)
+                # eta = np.average(np.array(part_traces), axis=0)
             # mt_eta.append(eta)
         mt_eta = np.array(mt_eta) - np.median(mt_eta, keepdims=True, axis=1)
         av_tr = np.average(mt_eta, axis=0)
