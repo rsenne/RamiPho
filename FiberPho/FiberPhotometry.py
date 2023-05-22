@@ -187,8 +187,6 @@ class fiberPhotometryCurve:
                 "No experiment type matches your NPM File input. Make sure you've loaded the correct file.")
 
         self.DF_F_Signals, self.DF_Z_Signals = self.process_data()
-        self.peak_properties = self.find_signal()
-        self.neg_peak_properties = self.find_signal(neg=True)
         if regress:
             if self.__DUAL_COLOR:
                 self.DF_F_Signals['GCaMP'], self.DF_Z_Signals['GCaMP'] = self.fit_regression('GCaMP')
@@ -197,6 +195,9 @@ class fiberPhotometryCurve:
                 self.DF_F_Signals['GCaMP'], self.DF_Z_Signals['GCaMP'] = self.fit_regression('GCaMP')
             else:
                 self.DF_F_Signals['RCaMP'], self.DF_Z_Signals['RCaMP'] = self.fit_regression('RCaMP')
+        self.peak_properties = self.find_signal()
+        self.neg_peak_properties = self.find_signal(neg=True)
+        
 
     def __iter__(self):
         return iter(list(self.DF_F_Signals.values()))
@@ -952,3 +953,6 @@ class fiberPhotometryExperiment:
         axs.set_ylabel(y_axis)  # annies 'Animal ID'
         axs.set_zlabel(z_axis)  # timeseries/signal 'dF/F GCaMP'
         return
+
+
+
