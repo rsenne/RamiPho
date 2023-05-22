@@ -138,16 +138,10 @@ FiberPho/Test_Photometry.py
 .idea/other.xml
 .idea/modules.xml
 .idea/vcs.xml
-.idea/vcs.xml
-.idea/modules.xml
-*.iml
 FiberPho/analysis_script.ipynb
 analysis_script.ipynb
 .idea/misc.xml
 .idea/RamiPho.iml
-*.xml
-*.iml
-.idea/misc.xml
 .idea
 FiberPho/analysis_file_ma681.py
 FiberPho/vCA1_analysis.py
