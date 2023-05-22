@@ -28,28 +28,35 @@ class fiberPhotometryCurve:
         :param kwargs: dict containing values such as "ID", "task", and/or "treatment" note: task and treatment necessary for use in fiberPhotometryExperiment
 
         """
-        for key, value in kwargs.items():
-            setattr(self, key, value)
-
         # these should always be present
         self.npm_file = npm_file
         self.fp_df = pd.read_csv(self.npm_file)
         self.__T0__ = self.fp_df['Timestamp'][1]
+        self.behavioral_data = {}
 
         # unpack extra params
-        if hasattr(self, 'keystroke_offset') or hasattr(self, 'manual_off_set'):
-            if hasattr(self, 'keystroke_offset'):
-                self.OffSet = (self.keystroke_offset - self.fp_df.at[0, 'Timestamp'])
-            else:
-                self.OffSet = self.manual_off_set
-        else:
-            self.OffSet = 0.0
+        self.ID = kwargs.get("ID")
+        self.task = kwargs.get("task")
+        self.treatment = kwargs.get("treatment")
+        self.anymaze_file = kwargs.get("anymaze_file")
+        self.DLC_file = kwargs.get("DLC_file")
 
         # determine sample time
         self._sample_time_ = np.diff(self.fp_df['Timestamp'])[1]
 
-        # this needs to be here for coherent timestamp data between behavioral analysis and signal
+        # determine the offset between the recording start time and experiment start time
+        if "keystroke_offset" in kwargs:
+            self.OffSet = (kwargs["keystroke_offset"] - self.fp_df.at[0, 'Timestamp'])
+        elif "manual_offset" in kwargs:
+            self.OffSet = kwargs['manual_offset']
+        elif "keystroke_offset" and "manual_offset" in kwargs:
+            warn.warn("Warning: There should only be one type of offset specified, please check you params dictionary."
+                      "Setting offset to 0.0.")
+            self.OffSet = 0.0
+        else:
+            self.OffSet = 0.0
 
+        # this needs to be here for coherent timestamp data between behavioral analysis and signal
         # mb trying to do behavioral dict of dicts
         # if there's a DLC file, apply calc kinematics on that file and then put the velocity and accel column as keys
         # mb trying to do behavioral dict of dicts
@@ -240,7 +247,6 @@ class fiberPhotometryCurve:
             z = spsolve(Z, w * y)
             w = p * (y > z) + (1 - p) * (y < z)
         return y - z
-
 
     @staticmethod
     def smooth(signal, kernel, visual_check=False):
@@ -788,7 +794,6 @@ class fiberPhotometryExperiment:
         plt.xlabel('Time (s)')
         plt.show()
         return fig
-
 
     def mt_event_triggered_average(self, curve, event_times, window, group, ci_type='t', shuffle=False,
                                    timepoint=True):
