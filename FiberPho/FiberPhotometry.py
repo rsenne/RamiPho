@@ -592,7 +592,7 @@ class fiberPhotometryCurve:
     def reset_peak_params(self, crit_width, curve_type, props=None):
         deletion_list = [i for i, j in enumerate(self.peak_properties[curve_type]['widths']) if j < crit_width]
         if props is None:
-            props = ['widths', 'areas_under_curve', 'peak_heights']
+            props = ['widths', 'areas_under_curve', 'peak_heights', 'peaks']
         for prop in props:
             self.peak_properties[curve_type][prop] = np.delete(self.peak_properties[curve_type][prop], deletion_list)
         return
@@ -628,16 +628,14 @@ class fiberPhotometryCurve:
         if columns is None:
             columns = ['peaks', 'peak_heights', 'areas_under_curves', 'widths']
         if self.__DUAL_COLOR:
-            metric_df_gcamp = pd.DataFrame(self.peak_properties['GCaMP'])
+            metric_df_gcamp = pd.DataFrame(self.peak_properties['GCaMP'], columns=columns)
             metric_df_gcamp.loc[:, 'Timestamps'] = self.Timestamps['GCaMP'][self.peak_properties['GCaMP']['peaks']]
-            metric_df_rcamp = pd.DataFrame(self.peak_properties['RCaMP'])
+            metric_df_rcamp = pd.DataFrame(self.peak_properties['RCaMP'], columns=columns)
             metric_df_rcamp.loc[:, 'Timestamps'] = self.Timestamps['RCaMP'][self.peak_properties['RCaMP']['peaks']]
-            metric_df_gcamp, metric_df_rcamp = metric_df_gcamp[columns], metric_df_gcamp[columns]
             return metric_df_gcamp, metric_df_rcamp
         else:
-            metric_df_gcamp = pd.DataFrame(self.peak_properties['GCaMP'])
+            metric_df_gcamp = pd.DataFrame(self.peak_properties['GCaMP'], columns=columns)
             metric_df_gcamp.loc[:, 'Timestamps'] = self.Timestamps['GCaMP'][self.peak_properties['GCaMP']['peaks']]
-            metric_df_gcamp = metric_df_gcamp[columns]
             return metric_df_gcamp
 
 
