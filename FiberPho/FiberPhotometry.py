@@ -234,7 +234,7 @@ class fiberPhotometryCurve:
         return True
 
     @staticmethod
-    def _als_detrend(y, lam=10e7, p=0.01, niter=100):  # asymmetric least squares smoothing method
+    def _als_detrend(y, lam=10e7, p=0.05, niter=100):  # asymmetric least squares smoothing method
         L = len(y)
         D = sparse.diags([1, -2, 1], [0, -1, -2], shape=(L, L - 2))
         D = lam * D.dot(D.transpose())  # Precompute this term since it does not depend on `w`
@@ -247,6 +247,19 @@ class fiberPhotometryCurve:
             z = spsolve(Z, w * y)
             w = p * (y > z) + (1 - p) * (y < z)
         return y - z
+    
+    @staticmethod
+    def kalman_filter(signal):
+        ar_model = sm.tsa.ARIMA(signal, order=(3, 0, 0), trend='n').fit()
+        A = np.zeros((3, 3))
+        A[:, 0] = ar_model.params[:-1]
+        A[1, 0] = 1
+        A[2, 1] = 1
+        H = np.array([1, 0, 0])
+        kf = pykalman.KalmanFilter(transition_matrices=A, observation_matrices=H, initial_state_covariance=np.eye(3), initial_state_mean=(0, 0, 0), em_vars=['transition_covariance', 'observation_covariance'])
+        kf.em(signal, em_vars=[['transition_covariance', 'observation_covariance']])
+        means, covs = kf.smooth(signal)
+        return means[:, 0]
 
     @staticmethod
     def smooth(signal, kernel, visual_check=False):
@@ -307,9 +320,9 @@ class fiberPhotometryCurve:
                 df_f_signals[i] = self._als_detrend(df_f_signals[i])
                 df_z_signals[i] = self._als_detrend(df_z_signals[i])
         # smoothed like a baby's bottom
-        smoothed_f_signals = [self.smooth(timeseries, kernel=10) for timeseries in
+        smoothed_f_signals = [self.kalman_filter(timeseries) for timeseries in
                               df_f_signals]
-        smoothed_z_signals = [self.smooth(timeseries, kernel=10) for timeseries in
+        smoothed_z_signals = [self.kalman_filter(timeseries) for timeseries in
                               df_z_signals]
         return {identity: signal for identity, signal in zip(self.Signal.keys(), smoothed_f_signals)}, {identity: signal
                                                                                                         for
@@ -736,7 +749,7 @@ class fiberPhotometryExperiment:
             try:
                 pos = pos_wid
                 neg = neg_wid
-                while len(pos) / (len(pos) + len(neg)) < 0.99:
+                while len(pos) / (len(pos) + len(neg)) < 0.90:
                     pos = [pos_i for pos_i in pos if pos_i > wid_list[i]]
                     neg = [neg_i for neg_i in neg if neg_i > wid_list[i]]
                     i += 1
@@ -746,8 +759,6 @@ class fiberPhotometryExperiment:
                 neg_wid.sort()
                 neg_wid = neg_wid[:-1]
                 return self.find_critical_width(pos_wid, neg_wid)
-            # except IndexError:
-
         return critical_width
 
     def __set_crit_width__(self, curve_type='GCaMP'):
@@ -858,16 +869,6 @@ class fiberPhotometryExperiment:
             bootstrap_mat[i, :] = average_trace
         ci_lower_upper = np.percentile(bootstrap_mat, [sig / 2, 100 - (sig / 2)], axis=0)
         return ci_lower_upper
-
-    # def plot_st_eta(self, curve, event_time, window, *args):
-    #     for arg in args:
-    #         av_tr, av_ti, ci = self.st_event_triggered_average(curve, event_time, window, arg)
-    #         ti_ind = np.argmin(np.abs(av_ti - event_time))
-    #         plt.axvline(av_ti[ti_ind], linestyle='--', color='black')
-    #         plt.plot(av_ti, av_tr)
-    #         plt.fill_between(av_ti, (av_tr - ci), (av_tr + ci), alpha=0.1)
-    #         plt.show()
-    #     return
 
     def plot_mt_eta(self, curve, event_times, window, *args):
         fig, ax = plt.subplots(1, 1)
