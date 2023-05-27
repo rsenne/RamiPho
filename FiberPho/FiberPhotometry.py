@@ -15,7 +15,7 @@ from scipy.signal import find_peaks
 from scipy.sparse.linalg import spsolve
 import pykalman
 
-__all__ = ["fiberPhotometryCurve", "fiberPhotometryExperiment"]
+__all__ = ["fiberPhotometryCurve", "fiberPhotometryExperiment", "FiberPhotometryCollection"]
 
 
 class fiberPhotometryCurve:
@@ -222,6 +222,9 @@ class fiberPhotometryCurve:
 
     def __hash__(self):
         return hash(self.DF_F_Signals.values())
+    
+    def __getitem__(self, idx):
+        return self.DF_F_Signals[idx]
 
     @staticmethod
     @nb.jit(nopython=True)
@@ -257,14 +260,13 @@ class fiberPhotometryCurve:
         A[2, 1] = 1
         H = np.array([1, 0, 0])
         kf = pykalman.KalmanFilter(transition_matrices=A, observation_matrices=H, initial_state_covariance=np.eye(3), initial_state_mean=(0, 0, 0), em_vars=['transition_covariance', 'observation_covariance'])
-        kf.em(signal, em_vars=[['transition_covariance', 'observation_covariance']])
+        kf.em(signal, em_vars=['transition_covariance', 'observation_covariance'])
         means, covs = kf.smooth(signal)
         return means[:, 0]
 
     @staticmethod
     def smooth(signal, kernel, visual_check=False):
         """
-
         :param signal: array of signal of interest (GCaMP, Isobestic_GCaMP, etc)
         :param kernel: int length of uniform filter
         :param visual_check: boolean for plotting original vs smoothed signal
@@ -958,3 +960,57 @@ class fiberPhotometryExperiment:
         axs.set_ylabel(y_axis)  # annies 'Animal ID'
         axs.set_zlabel(z_axis)  # timeseries/signal 'dF/F GCaMP'
         return
+
+
+class FiberPhotometryCollection:
+    def __init__(self, name):
+        self.name = name
+        self.curves = {}
+
+    def __getitem__(self, attributes):
+        filtered_curves = []
+        for curve in self.curves.values():
+            if (curve.task, curve.treatment) == attributes:
+                filtered_curves.append(curve)
+        return filtered_curves
+
+    def add_curve(self, *args):
+        """add_curve: add a fiberPhotometryCUrve object to the collection for analysis.
+
+            Args:
+                *args(fiberPhotometryCurve): fiberPhotometryCurves
+        """
+        for arg in args:
+            if arg.ID is None:
+                i = len(self.curves.values())
+                print(f"No name supplied for this curve. Defaulting to 'Curve {i}' as the name. Consider updating this name.")
+                self.curves.update({f"Curve {i}":arg})
+            else:
+                self.curves.update({arg.ID:arg})
+
+    def raster_plot(self, task, treatment, geci, xtick_range=None, xtick_freq=None):
+        """Raster plot: Generate a raster plot of Z-scored fiber photometry traces.
+
+        Args:
+            task (str): String that represents the task e.g. FC, Recall, Ext etc.Should be identical to what was passed in fiberPhotometryCurve.
+            treatment (str): String that represents the treatment e.g. eYFP, ChR2, Shock etc. Should be identical to what was passed in fiberPhotometryCurve.
+            geci (str): String to grab GECI trace of choice e.g. GCaMP
+            xtick_range (int, optional): Length in time of session. Defaults to None.
+            xtick_freq (int, optional): How many labels in [0, xtick_range]; end points inclusive. Defaults to None.
+
+        Returns:
+            matplotlib figure: a matplotlib figure object
+            matplotlib axis: a matplotlib axis object
+        """
+        curves = self[task, treatment]
+        min_len = np.min([len(curve[geci]) for curve in curves])
+        raster_array = np.zeros(shape=(len(curves), min_len))
+        for i, curve in enumerate(curves):
+            raster_array[i] = curve[geci][:min_len]
+
+        fig, ax = plt.subplots()
+        sb.heatmap(raster_array, cbar=True, cbar_kws={"label":r"$\frac{dF}{F}$"}, center=0, yticklabels=False, ax=ax)
+        ax.set_xlabel('Time (s)')
+        if xtick_range and xtick_freq is not None:
+            ax.set_xticks(np.linspace(0, min_len, xtick_freq), labels=np.linspace(0, xtick_range, xtick_freq, dtype=np.int))
+        return fig, ax
