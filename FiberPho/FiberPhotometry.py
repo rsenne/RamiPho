@@ -647,7 +647,7 @@ class fiberPhotometryCurve:
 
     def metric_df(self, columns=None):
         if columns is None:
-            columns = ['peaks', 'peak_heights', 'areas_under_curves', 'widths']
+            columns = ['peaks', 'peak_heights', 'areas_under_curve', 'widths']
         if self.__DUAL_COLOR:
             metric_df_gcamp = pd.DataFrame(self.peak_properties['GCaMP'], columns=columns)
             metric_df_gcamp.loc[:, 'Timestamps'] = self.Timestamps['GCaMP'][self.peak_properties['GCaMP']['peaks']]
@@ -968,6 +968,14 @@ class FiberPhotometryCollection:
         self.curves = {}
 
     def __getitem__(self, attributes):
+        """Indexing method for class.
+
+        Usage: my_collection["fc", "ChR2"]
+        Args:
+            attributes (str): Attributes given e.g. task and treatment variables.
+        Returns:
+            filtered_curves (list(fiberPhotometryCurve)): List of all fp curves that meet the set of criteria set by the user. I.e. animals that wear fear conditioned and had ChR2.
+        """
         filtered_curves = []
         for curve in self.curves.values():
             if (curve.task, curve.treatment) == attributes:
@@ -976,7 +984,6 @@ class FiberPhotometryCollection:
 
     def add_curve(self, *args):
         """add_curve: add a fiberPhotometryCUrve object to the collection for analysis.
-
             Args:
                 *args(fiberPhotometryCurve): fiberPhotometryCurves
         """
@@ -987,17 +994,43 @@ class FiberPhotometryCollection:
                 self.curves.update({f"Curve {i}":arg})
             else:
                 self.curves.update({arg.ID:arg})
+                
+    def peak_dict(self, geci="GCaMP"):
+        """_summary_
+        Args:
+            geci (str, optional): Which GECI peak properties to look at. Defaults to "GCaMP".
+        Returns:
+            peak_dict (dict): dictionary that maps each curve to its peak properties e.g. AUC, fwhm, etc.
+        """
+        id = [k for k in self.curves]
+        peak_times = [v.Timestamps[geci][v.peak_properties[geci]['peaks']] for v in self.curves.values()]
+        peak_heights = [v.peak_properties[geci]['peak_heights'] for v in self.curves.values()]
+        auc = [v.peak_properties[geci]["areas_under_curve"] for v in self.curves.values()]
+        fwhm = [v.peak_properties[geci]["widths"] for v in self.curves.values()]
+        peak_dict = {"ID": id, "Peak_Times": peak_times, "Amplitudes": peak_heights, "AUC":auc, "FWHM": fwhm}
+        return peak_dict
+
+    def histogram_2d(self):
+        pass
+
+    def eliminate_events(self):
+        pass
+
+    def event_summaries(self, geci='gcamp'):
+        dict = self.peak_dict(geci)
+        df = pd.DataFrame(dict)
+        df_transformed = df.apply(pd.Series.explode).reset_index()
+        return df_transformed
+    
 
     def raster_plot(self, task, treatment, geci, xtick_range=None, xtick_freq=None):
         """Raster plot: Generate a raster plot of Z-scored fiber photometry traces.
-
         Args:
             task (str): String that represents the task e.g. FC, Recall, Ext etc.Should be identical to what was passed in fiberPhotometryCurve.
             treatment (str): String that represents the treatment e.g. eYFP, ChR2, Shock etc. Should be identical to what was passed in fiberPhotometryCurve.
             geci (str): String to grab GECI trace of choice e.g. GCaMP
             xtick_range (int, optional): Length in time of session. Defaults to None.
             xtick_freq (int, optional): How many labels in [0, xtick_range]; end points inclusive. Defaults to None.
-
         Returns:
             matplotlib figure: a matplotlib figure object
             matplotlib axis: a matplotlib axis object
@@ -1006,7 +1039,7 @@ class FiberPhotometryCollection:
         min_len = np.min([len(curve[geci]) for curve in curves])
         raster_array = np.zeros(shape=(len(curves), min_len))
         for i, curve in enumerate(curves):
-            raster_array[i] = curve[geci][:min_len]
+            raster_array[i] = curve.DF_Z_Signals[geci][:min_len]
 
         fig, ax = plt.subplots()
         sb.heatmap(raster_array, cbar=True, cbar_kws={"label":r"$\frac{dF}{F}$"}, center=0, yticklabels=False, ax=ax)
