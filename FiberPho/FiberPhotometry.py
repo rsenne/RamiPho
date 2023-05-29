@@ -995,31 +995,56 @@ class FiberPhotometryCollection:
             else:
                 self.curves.update({arg.ID:arg})
                 
-    def peak_dict(self, geci="GCaMP"):
-        """_summary_
+    def peak_dict(self, geci="GCaMP", pos=True):
+        """Used to create a dictionary that maps each individual curve ID to its event attributes. The absic idea being this will be apssed to a later function for a well formatted df.
         Args:
             geci (str, optional): Which GECI peak properties to look at. Defaults to "GCaMP".
         Returns:
             peak_dict (dict): dictionary that maps each curve to its peak properties e.g. AUC, fwhm, etc.
         """
-        id = [k for k in self.curves]
-        peak_times = [v.Timestamps[geci][v.peak_properties[geci]['peaks']] for v in self.curves.values()]
-        peak_heights = [v.peak_properties[geci]['peak_heights'] for v in self.curves.values()]
-        auc = [v.peak_properties[geci]["areas_under_curve"] for v in self.curves.values()]
-        fwhm = [v.peak_properties[geci]["widths"] for v in self.curves.values()]
-        peak_dict = {"ID": id, "Peak_Times": peak_times, "Amplitudes": peak_heights, "AUC":auc, "FWHM": fwhm}
+        if pos:
+            id = [k for k in self.curves]
+            peak_times = [v.Timestamps[geci][v.peak_properties[geci]['peaks']] for v in self.curves.values()]
+            peak_heights = [v.peak_properties[geci]['peak_heights'] for v in self.curves.values()]
+            auc = [v.peak_properties[geci]["areas_under_curve"] for v in self.curves.values()]
+            fwhm = [v.peak_properties[geci]["widths"] for v in self.curves.values()]
+            peak_dict = {"ID": id, "Peak_Times": peak_times, "Amplitudes": peak_heights, "AUC":auc, "FWHM": fwhm}
+        else:
+            id = [k for k in self.curves]
+            peak_times = [v.Timestamps[geci][v.neg_peak_properties[geci]['peaks']] for v in self.curves.values()]
+            peak_heights = [-v.neg_peak_properties[geci]['peak_heights'] for v in self.curves.values()]
+            auc = [v.neg_peak_properties[geci]["areas_under_curve"] for v in self.curves.values()]
+            fwhm = [v.neg_peak_properties[geci]["widths"] for v in self.curves.values()]
+            peak_dict = {"ID": id, "Peak_Times": peak_times, "Amplitudes": peak_heights, "AUC":auc, "FWHM": fwhm}
         return peak_dict
 
-    def histogram_2d(self):
-        pass
+    def histogram_2d(self, geci):
+        """Plots a 2D event histogram where Y=Amplitudes and X=FWHM. The idea is to see if there is an easily defined threshold where all events inside that 2D bin are negative.
+
+        Args:
+            geci (str): Which indicator curve to plot the 2D event histogram for. Defaults to "GCaMP".
+        """
+        pos_peak_dict = self.peak_dict(geci=geci, pos=True)
+        neg_peak_dict = self.peak_dict(geci=geci, pos=False)
+        event_df = pd.concat((pd.DataFrame(pos_peak_dict).apply(pd.Series.explode).reset_index(drop=True), pd.DataFrame(neg_peak_dict).apply(pd.Series.explode).reset_index(drop=True)))
+        event_df.dropna(inplace=True)
+        plt.hist2d(x='Amplitudes', y='FWHM', data=event_df)
+        plt.show()
+        return
 
     def eliminate_events(self):
         pass
 
     def event_summaries(self, geci='gcamp'):
+        """Creates a DataFrame that contains all of the relevant event information e.g. AUC, FWHM, etc. This can be used for further analysis e.g. stats across groups linear mixed models etc.
+        Args:
+            geci (str, optional): _description_. Defaults to 'gcamp'.
+        Returns:
+            df_transformed(pd.DataFrame): A DataFrame that contains a conglomeration of all the events across animals. 
+        """
         dict = self.peak_dict(geci)
         df = pd.DataFrame(dict)
-        df_transformed = df.apply(pd.Series.explode).reset_index()
+        df_transformed = df.apply(pd.Series.explode).reset_index(drop=True)
         return df_transformed
     
 
