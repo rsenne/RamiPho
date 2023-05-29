@@ -2,15 +2,12 @@ import pykalman
 import numpy as np
 import pandas as pd
 
-class dlcProcessor:
+__all__ = ['dlcResults']
+
+class dlcResults:
     def __init__(self, dlc_file):
-        self.dlc_file = pd.read_csv(dlc_file)
-
-    def __processfile__(self, bparts=None):
-        if bparts is None:
-            bparts = ["snout", "l_ear", "r_ear", "back_l_paw", "back_r_paw", "tip_of_tail", "base_of_tail"]
+        self.dlc_df = pd.read_csv(dlc_file, header=[1, 2], index_col=[0])
         
-
 
     def kalman_filter(self, x_data, y_data, dt=1):
         A = np.array([
@@ -52,3 +49,14 @@ class dlcProcessor:
             kalman_accel[t, 1] = (kalman_means[t, 3] - kalman_means[t-1, 3])
 
         return kalman_means, kalman_covs, kalman_accel
+    
+    def calculate_centroids(self, bparts=None):
+        if bparts is None:
+            bparts = ['snout', 'l_ear', 'r_ear', 'front_l_paw', 'front_r_paw', 'back_l_paw', 'back_r_paw', 'base_of_tail', 'tip_of_tail']
+        self.dlc_df.loc[:, ('centroid','x')] = self.dlc_df.xs('x', axis=1, level=1).mean(axis=1)
+        self.dlc_df.loc[:, ('centroid','y')] = self.dlc_df.xs('y', axis=1, level=1).mean(axis=1)
+        return self.dlc_df
+        
+        
+    def filter_predictions(self, bparts=None, fps=None):
+            pass
