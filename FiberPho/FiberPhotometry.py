@@ -19,7 +19,7 @@ __all__ = ["fiberPhotometryCurve", "fiberPhotometryExperiment", "FiberPhotometry
 
 
 class fiberPhotometryCurve:
-    def __init__(self, npm_file: str, regress=False, **kwargs):
+    def __init__(self, npm_file: str, dlc_file:str=None, offset:float=None, anymaze_file:str=None, regress:bool=True, ID:str=None, task:str=None, treatment:str=None, smoother='kalman'):
         """
         :param npm_file: str Path to csv fiber photometry file gathered using a neurophotometrics fp3002 rig and bonsai software
         :param behavioral_data: Path(s) to csv files, either deeplabcut or anymaze, for doing behavioral analysis
@@ -31,188 +31,41 @@ class fiberPhotometryCurve:
         # these should always be present
         self.npm_file = npm_file
         self.fp_df = pd.read_csv(self.npm_file)
-        self.__T0__ = self.fp_df['Timestamp'][1]
+        self.__T0__= self.fp_df['Timestamp'][1]
         self.behavioral_data = {}
-
-        # unpack extra params
-        self.ID = kwargs.get("ID")
-        self.task = kwargs.get("task")
-        self.treatment = kwargs.get("treatment")
-        self.anymaze_file = kwargs.get("anymaze_file")
-        self.DLC_file = kwargs.get("DLC_file")
+        self.ID = ID
+        self.task = task
+        self.treatment = treatment
+        self.anymaze_file = anymaze_file
+        self.DLC_file = dlc_file
+        self.offset = offset
+        self.regress = regress
+        self.smoother = smoother
+        self.raw_signal = None
+        self.timestamps = None
+        self.dff_signals = None
+        self.dfz_signals = None
 
         # determine sample time
         self._sample_time_ = np.diff(self.fp_df['Timestamp'])[1]
-
-        # determine the offset between the recording start time and experiment start time
-        if "keystroke_offset" in kwargs:
-            self.OffSet = (kwargs["keystroke_offset"] - self.fp_df.at[0, 'Timestamp'])
-        elif "manual_offset" in kwargs:
-            self.OffSet = kwargs['manual_offset']
-        elif "keystroke_offset" and "manual_offset" in kwargs:
-            warn.warn("Warning: There should only be one type of offset specified, please check you params dictionary."
-                      "Setting offset to 0.0.")
-            self.OffSet = 0.0
-        else:
-            self.OffSet = 0.0
-
-        # this needs to be here for coherent timestamp data between behavioral analysis and signal
-        # mb trying to do behavioral dict of dicts
-        # if there's a DLC file, apply calc kinematics on that file and then put the velocity and accel column as keys
-        # mb trying to do behavioral dict of dicts
-        self.behavioral_data = {}  # behavioral data dictionary
-        if hasattr(self, 'DLC_file'):  # if there's a DLC file key word arg
-            self.behavioral_data['DLC'] = {}  # creates nested dictionary within behavioral data dictionary
-
-            # if parameters  of calc_kinematics change, pass them through calc kinematics
-            # passes csv DLC file through calc_kinematics function, stores it in pandas df
-            df = self.calc_kinematics(getattr(self, 'DLC_file'), getattr(self, 'bps', None),
-                                      getattr(self, 'interpolate', True), getattr(self, 'int_f', 100),
-                                      getattr(self, 'threshold', .6))
-
-            # creates a numpy array as a value for the velocity and acceleration, taken from velocity and
-            # acceleration columns of df
-            self.behavioral_data['DLC']['velocity'] = df['velocity'].to_numpy()
-            self.behavioral_data['DLC']['acceleration'] = df['acceleration'].to_numpy()
-            # add kwargs
-        if hasattr(self, 'anymaze_file'):  # if there's an anymaze file key word arg
-            self.behavioral_data['Anymaze'] = {}  # creates nested dictionary within behavioral data dictionary
-            # passes csv anymzze file through process_anymaze method, stores it in pandas df
-            df = pd.read_csv(getattr(self, 'anymaze_file'))
-            anymaze_df, freeze_vector, inds_start, inds_end = self.process_anymaze(df, self.fp_df.Timestamp[
-                self.fp_df['LedState'] == 1])
-            # puts freeze vector array and start/end freezing inds from the process anymaze function into the Anymaze
-            # dictionary
-            self.behavioral_data['Anymaze']['freeze_vector'] = freeze_vector
-
-            self.behavioral_data['Anymaze']['start_freezing'] = inds_start  # start of freezing bouts
-            self.behavioral_data['Anymaze']['end_freezing'] = inds_end  # ends of freezing bouts
-            self.behavioral_data['Anymaze']['anymaze_df'] = anymaze_df
-
-        if hasattr(self, 'manual_off_set'):
-            self.fp_df = self.fp_df[int(self.manual_off_set // self._sample_time_):].reset_index()
-
-        if hasattr(self, 'keystroke_offset'):
-            ind = self.fp_df[self.fp_df['Timestamp'] == self.keystroke_offset].index[0]
-            self.fp_df = self.fp_df[ind - 1:].reset_index()
-            self.__T0__ = self.fp_df['Timestamp'][0]
+        self.fps = 1/self._sample_time_
 
         # check to see if using old files
         if "Flags" in self.fp_df.columns:
             self.fix_npm_flags()
             print("Old NPM format detected, changing Flags to LedState")
-        else:
-            pass
 
-        # drop last row if timeseries are unequal
-        try:
-            while self.fp_df['LedState'].value_counts()[1] != self.fp_df['LedState'].value_counts()[2] or \
-                    self.fp_df['LedState'].value_counts()[2] != self.fp_df['LedState'].value_counts()[4]:
-                self.fp_df.drop(self.fp_df.index[-1], axis=0, inplace=True)
-        except KeyError:
-            while self.fp_df['LedState'].value_counts()[1] != self.fp_df['LedState'].value_counts()[2]:
-                self.fp_df.drop(self.fp_df.index[-1], axis=0, inplace=True)
-        except:
-            while self.fp_df['LedState'].value_counts()[1] != self.fp_df['LedState'].value_counts()[4]:
-                self.fp_df.drop(self.fp_df.index[-1], axis=0, inplace=True)
-
-        if 2 and 4 in self.fp_df.LedState.values:
-            self.__DUAL_COLOR = True
-        else:
-            self.__DUAL_COLOR = False
-
-        # create essentially a dummy variable for ease of typing
-        columns = list(self.fp_df.columns)
-        if "Region0G" in columns:
-            self.__CONF1 = True
-        else:
-            self.__CONF1 = False
-
-        # slicing file based on flag values present in file
-        # this is a goddamned mess...please for the love of god if there's a better way show me
-        # literally brute force
-        if self.__DUAL_COLOR:
-            gcamp = self.fp_df[self.fp_df['LedState'] == 2]
-            rcamp = self.fp_df[self.fp_df['LedState'] == 4]
-            isobestic = self.fp_df[self.fp_df['LedState'] == 1]
-            if self.__CONF1:
-                isobestic_gcamp = isobestic.Region0G
-                isobestic_rcamp = isobestic.Region1R
-                self.Signal = {"GCaMP": np.array(gcamp['Region0G']),
-                               "RCaMP": np.array(gcamp['Region1R']),
-                               "Isobestic_GCaMP": np.array(isobestic_gcamp),
-                               "Isobestic_RCaMP": np.array(isobestic_rcamp)}
-                self.Timestamps = {signal: time.reset_index(drop=True).tolist() - self.__T0__
-                                   for
-                                   signal, time in zip(['Isobestic_GCaMP', 'Isobestic_RCaMP', 'GCaMP', 'RCaMP'],
-                                                       [isobestic.Timestamp, isobestic.Timestamp, gcamp.Timestamp,
-                                                        rcamp.Timestamp])}
-
-            else:
-                isobestic_gcamp = isobestic.Region1G
-                isobestic_rcamp = isobestic.Region0R
-                self.Signal = {"GCaMP": np.array(gcamp['Region1G']),
-                               "RCaMP": np.array(gcamp['Region0R']),
-                               "Isobestic_GCaMP": np.array(isobestic_gcamp),
-                               "Isobestic_RCaMP": np.array(isobestic_rcamp)}
-                self.Timestamps = {signal: time.values.tolist() - self.__T0__ for
-                                   signal, time in zip(['Isobestic_GCaMP', 'Isobestic_RCaMP', 'GCaMP', 'RCaMP'],
-                                                       [isobestic.Timestamp, isobestic.Timestamp, gcamp.Timestamp,
-                                                        rcamp.Timestamp])}
-
-        elif not self.__DUAL_COLOR:
-            isobestic = self.fp_df[self.fp_df['LedState'] == 1]
-
-            try:
-                gcamp = self.fp_df[self.fp_df['LedState'] == 2]
-                self.Timestamps = {signal: time.values.tolist() - self.__T0__ for
-                                   signal, time in
-                                   zip(['Isobestic_GCaMP', 'GCaMP'], [isobestic.Timestamp, gcamp.Timestamp])}
-
-                if self.__CONF1:
-                    self.Signal = {"GCaMP": np.array(gcamp['Region0G']),
-                                   "Isobestic_GCaMP": np.array(isobestic["Region0G"])}
-
-                else:
-                    self.Signal = {"GCaMP": np.array(gcamp['Region1G']),
-                                   "Isobestic_GCaMP": np.array(isobestic["Region1G"])}
-
-            except KeyError:
-                rcamp = self.fp_df[self.fp_df['LedState'] == 4]
-                self.Timestamps = {signal: time.values.tolist() - self.__T0__ for
-                                   signal, time in zip(['Isobestic_RCaMP', 'RCaMP'], [isobestic, rcamp])}
-
-                if self.__CONF1:
-                    self.Signal = {"RCaMP": np.array(rcamp['Region1R']),
-                                   "Isobestic_RCaMP": np.array(isobestic["Region1R"])}
-
-                else:
-                    self.Signal = {"RCaMP": np.array(rcamp['Region0R']),
-                                   "Isobestic_RCaMP": np.array(isobestic["Region0R"])}
-        else:
-            raise ValueError(
-                "No experiment type matches your NPM File input. Make sure you've loaded the correct file.")
-
-        self.DF_F_Signals, self.DF_Z_Signals = self.process_data()
-        self.peak_properties = self.find_signal()
-        self.neg_peak_properties = self.find_signal(neg=True)
-        if regress:
-            if self.__DUAL_COLOR:
-                self.DF_F_Signals['GCaMP'], self.DF_Z_Signals['GCaMP'] = self.fit_regression('GCaMP')
-                self.DF_F_Signals['RCaMP'], self.DF_Z_Signals['RCaMP'] = self.fit_regression('RCaMP')
-            elif 2 in self.fp_df.LedState.values:
-                self.DF_F_Signals['GCaMP'], self.DF_Z_Signals['GCaMP'] = self.fit_regression('GCaMP')
-            else:
-                self.DF_F_Signals['RCaMP'], self.DF_Z_Signals['RCaMP'] = self.fit_regression('RCaMP')
+        # do preprocessing as part of initilization
+        self._process_data()
 
     def __iter__(self):
-        return iter(list(self.DF_F_Signals.values()))
+        return iter(list(self.dff_signals.values()))
 
     def __eq__(self, other):
         if not isinstance(other, fiberPhotometryCurve):
             raise TypeError("You can only compare the identity of a fiber photometry curve to another fiber"
                             "photometry curve!!")
-        val1 = self.DF_F_Signals.values()
+        val1 = self.dff_signals.values()
         val2 = other
         truthiness_array = [self.__arrays_equal__(a, b) for a, b in zip(val1, val2)]
         if any(truthiness_array):
@@ -224,8 +77,57 @@ class fiberPhotometryCurve:
         return hash(self.DF_F_Signals.values())
     
     def __getitem__(self, idx):
-        return self.DF_F_Signals[idx]
+        return self.dff_signals[idx]
 
+    def _extract_data(self):
+        # Initialize the data structures
+        raw_signal = {}
+        isobestic_data = {}
+        timestamps = {}
+
+        # led states
+        led_state = [1, 2, 4]
+
+        # Get the unique region columns
+        region_columns = self.fp_df.columns[self.fp_df.columns.str.contains('Region')].tolist()
+        
+
+        # Find the length of the shortest trace
+        shortest_trace_length = float('inf')
+
+        # Process each region column
+        for column in region_columns:
+
+            # Filter the data based on LEDState and Region column
+            region_data = self.fp_df[(self.fp_df['LedState'] == 2) if column.endswith('G') else (self.fp_df['LedState'] == 4)]
+            
+
+            # Store the region-specific information
+            if not region_data.empty:
+                raw_signal[column] = region_data[column].reset_index(drop=True)
+                isobestic_data[column] = self.fp_df[self.fp_df['LedState'] == 1][column].reset_index(drop=True)
+
+                # Update the length of the shortest trace
+                shortest_trace_length = min(shortest_trace_length, len(region_data[column]))
+
+        for state in led_state:
+            if not self.fp_df[self.fp_df['LedState'] == state].Timestamp.empty:
+                # Store the deinterleaved timestamps for the LEDState
+                timestamps[str(state)] = self.fp_df[self.fp_df['LedState'] == state].Timestamp
+
+        # Trim the signals and timestamps to the length of the shortest trace
+        for column, led_state in zip(raw_signal.keys(), led_state):
+            raw_signal[column] = raw_signal[column][:shortest_trace_length]
+            isobestic_data[column] = isobestic_data[column][:shortest_trace_length]
+            timestamps[str(led_state)] = timestamps[str(led_state)][:shortest_trace_length]
+
+        self.raw_signal = raw_signal
+        self.isobestic_channel = isobestic_data
+        self.Timestamps = timestamps
+        return
+    
+
+    
     @staticmethod
     @nb.jit(nopython=True)
     def __arrays_equal__(a, b):
@@ -235,7 +137,7 @@ class fiberPhotometryCurve:
             if ai != bi:
                 return False
         return True
-
+    
     @staticmethod
     def _als_detrend(y, lam=10e7, p=0.05, niter=100):  # asymmetric least squares smoothing method
         L = len(y)
@@ -252,7 +154,33 @@ class fiberPhotometryCurve:
         return y - z
     
     @staticmethod
-    def kalman_filter(signal):
+    def _df_f(raw, method="standard"):
+        """
+        :param raw: a smoothed baseline-corrected array of fluorescence values
+        :param kind: whether you want standard df/f or if you would like a z-scored scaling
+        :return: df/f standard or z-scored
+        Function to calculate DF/F (signal - median / median or standard deviation).
+        """
+        if method == "standard":
+            F0 = np.median(raw)  # median value of time series
+            df_f = (raw - F0) / F0
+        elif method == "z_scored":  # z-scored
+            F0 = np.mean(raw)
+            df_f = (raw - F0) / np.std(raw)
+        elif method == "percentile":
+            F0 = np.percentile(raw, 0.08)
+            df_f = (raw - F0) / F0
+        return df_f
+    
+    @staticmethod
+    def _fit_regression(endog, exog, summary=False):
+        model = sm.OLS(endog, sm.add_constant(exog)).fit()
+        if summary:
+            print(model.summary())
+        return model.resid
+    
+    @staticmethod
+    def _kalman_filter(signal):
         ar_model = sm.tsa.ARIMA(signal, order=(3, 0, 0), trend='n').fit()
         A = np.zeros((3, 3))
         A[:, 0] = ar_model.params[:-1]
@@ -265,7 +193,7 @@ class fiberPhotometryCurve:
         return means[:, 0]
 
     @staticmethod
-    def smooth(signal, kernel, visual_check=False):
+    def _smooth(signal, kernel, visual_check=False):
         """
         :param signal: array of signal of interest (GCaMP, Isobestic_GCaMP, etc)
         :param kernel: int length of uniform filter
@@ -278,39 +206,57 @@ class fiberPhotometryCurve:
             plt.plot(signal)
             plt.plot(smooth_signal)
         return smooth_signal
+    
+    def _process_data(self):
+        if self.raw_signal is None:
+            self._extract_data()
+        
 
-    @staticmethod
-    def _df_f(raw, kind="std"):
-        """
-        :param raw: a smoothed baseline-corrected array of fluorescence values
-        :param kind: whether you want standard df/f or if you would like a z-scored scaling
-        :return: df/f standard or z-scored
-        Function to calculate DF/F (signal - median / median or standard deviation).
-        """
-        F0 = np.median(raw)  # median value of time series
-        if kind == "standard":
-            df_f = (raw - F0) / F0
-        else:  # z-scored
-            df_f = (raw - F0) / np.std(raw)
-        return df_f
+        assert set(self.raw_signal.keys()) == set(self.isobestic_channel.keys()) 
+        dff_signal = {}
+        dfz_signal = {}
+
+        for key in self.raw_signal.keys():
+            # get the timeseries
+            geci_timeseries = self.raw_signal[key]
+            isobestic_timeseries = self.isobestic_channel[key]
+
+            # Perform baseline correction
+            geci_timeseries_corrected = self._als_detrend(geci_timeseries)
+            isobestic_timeseries_corrected = self._als_detrend(isobestic_timeseries)
+            
+            # smooth out the data
+            if self.smoother == 'kalman':
+                geci_timeseries_corrected = self._kalman_filter(geci_timeseries_corrected)
+            else:
+                geci_timeseries_corrected = self._smooth(geci_timeseries_corrected, kernel=15)
+
+            # Calculate df/f for each timeseries
+            geci_timeseries_corrected = self._df_f(geci_timeseries_corrected)
+            isobestic_timeseries_corrected = self._df_f(isobestic_timeseries_corrected)
+
+
+            # Calculate z-scored df/f for each timeseries
+            geci_timeseries_corrected_z = self._df_f(geci_timeseries_corrected, method="z_scored")
+            isobestic_timeseries_corrected_z = self._df_f(isobestic_timeseries_corrected, method="z_scored")
+
+            # Regress out the isobestic signal from the geci signal
+            if self.regress is True:
+                geci_timeseries_corrected = self._fit_regression(geci_timeseries_corrected, isobestic_timeseries_corrected)
+                geci_timeseries_corrected_z = self._fit_regression(geci_timeseries_corrected_z, isobestic_timeseries_corrected_z)
+
+            dff_signal[key] = geci_timeseries_corrected
+            dfz_signal[key] = geci_timeseries_corrected_z
+
+        self.dff_signals = dff_signal
+        self.dfz_signals = dfz_signal
+
 
     @staticmethod
     def calc_area(l_index, r_index, timeseries):
         areas = np.asarray([simpson(timeseries[i:j]) for i, j in zip(l_index, r_index)])
         return areas
 
-    def fit_regression(self, signal):
-        endog = self.DF_F_Signals[signal]
-        exog = sm.add_constant(self.DF_F_Signals['Isobestic_' + signal])
-        model = sm.OLS(endog, exog)
-        results = model.fit()
-        endogz = self.DF_Z_Signals[signal]
-        exogz = sm.add_constant(self.DF_Z_Signals['Isobestic_' + signal])
-        modelz = sm.OLS(endogz, exogz)
-        resultsz = modelz.fit()
-        scaled_iso_F = self.DF_F_Signals[signal] - results.predict(exog)
-        scaled_iso_Z = self.DF_Z_Signals[signal] - resultsz.predict(exog)
-        return scaled_iso_F, scaled_iso_Z
 
     def process_data(self):  # correct baseline, smoothed with uniform filter
         signals = [signal for signal in self.Signal.values()]  # list of raw signals
@@ -333,12 +279,6 @@ class fiberPhotometryCurve:
                                                                                                         zip(self.Signal.keys(),
                                                                                                             smoothed_z_signals)}
 
-    def fit_general_linear_model(self, curve, ind_vars):
-        dep_var = np.reshape(self.DF_F_Signals[curve], (len(self.DF_F_Signals[curve]), 1))
-        ind_var = sm.add_constant(pd.DataFrame(ind_vars))
-        gaussian_model = sm.GLM(endog=dep_var, exog=ind_var, family=sm.families.Gaussian())
-        res_fit = gaussian_model.fit()
-        return res_fit
 
     def find_signal(self, neg=False):
         peak_properties = {}
@@ -488,103 +428,6 @@ class fiberPhotometryCurve:
         setattr(self, 'binned_freezing', freeze_time / bin_time)
         return
 
-    def calc_kinematics(self, DLC_file, bps=None, interpolate=True, int_f=100, threshold=.6):
-
-        """
-        :param DLC_file: DLC-processed csv file
-        :param bps: array of labeled body parts
-        :param interpolate: boolean expression, interpolates x and y coordinates for a variable number of frames whose probabilities are less than threshold amount
-        :param int_f: variable for maximum number of frames to  interpolate, default is 100 if interpolate is true
-        :param threshold: variable for minimum probability to threshold,  values higher  than threshold  will be kept, interpolated frames  will be set to threshold + .001
-        :return: data frame  with interpolated  x and  y coordinates and probabilities, x and y centroid columns, distance, velocity, and acceleration
-        Function to calculate kinematics i.e. distance, velocity, acceleration
-        """
-
-        # default  body part  array
-        if bps is None:
-            bps = ['snout', 'l_ear', 'r_ear', 'front_l_paw', 'front_r_paw', 'back_l_paw', 'back_r_paw',
-                   'base_of_tail']
-
-        # cleans up csv file
-        df = pd.read_csv(DLC_file, header=[1, 2])
-        df = df.dropna(how='all')
-        df = df.dropna(1)
-        df.columns = df.columns.get_level_values(0) + '_' + df.columns.get_level_values(1)
-
-        # converts to second by dividing number of frames+1 by the frame number
-        df["bodyparts_coords"] = df["bodyparts_coords"].apply(lambda x: x / 29)
-        # creates seconds column
-        df.rename(columns={'bodyparts_coords': 'seconds'}, inplace=True)
-
-        # sets distance, velocity, and acceleration column   time 0  to 0
-        df.at[0, 'distance'] = 0
-        df.at[0, 'velocity'] = 0
-        df.at[0, 'acceleration'] = 0
-
-        # interpolates for 100 frames
-        if interpolate:
-            # interpolates for next int_f frames
-            for bp in bps:  # GOES BODY PART AT A TIME
-                row = 0  # counter for row
-                while row < len(df) - 1:
-                    num = 0  # counter for how many nums to fill in
-                    og_x = 0
-                    og_y = 0
-
-                    # finds first value where next value has below threshold prob
-                    if (df.at[row, bp + '_likelihood'] > threshold) and (row != len(df)) and (
-                            df.at[row + 1, bp + '_likelihood'] <= threshold):
-                        # og nums, to be used later when calculating how much to add to each number
-                        og_x = df.at[row, bp + '_x']
-                        og_y = df.at[row, bp + '_y']
-                        row += 1
-                        # is going to move onto the next row
-                        while (num <= int_f):
-                            f = num + row  # row value is still og, num is how many frames it moves, so f is current row to check
-                            if (num > int_f) or (f > len(
-                                    df) - 1):  # if pass int_f frames, give up updating for this cycle, update row, and then reset everything, or if get to end of dataframe
-                                row += num
-                                num = 0
-                                og_y = 0
-                                og_x = 0
-                                break
-                            elif (df.at[
-                                      f, bp + '_likelihood'] > threshold):  # next value is greater  than threshold, will be final value, need another loop to reupdate
-                                final_x = df.at[f, bp + '_x']
-                                final_y = df.at[f, bp + '_y']
-                                update_x = (final_x - og_x) / (num + 1)  # number to increment x by
-                                update_y = (final_y - og_y) / (num + 1)  # number to increment y by
-                                n = 1
-                                for ind in range(row, f):  # number to multiply update_val by
-                                    df.at[ind, bp + '_x'] = og_x + update_x * n
-                                    df.at[ind, bp + '_y'] = og_y + update_y * n
-                                    df.at[ind, bp + '_likelihood'] = threshold + .001
-                                    n += 1
-                                row += num
-                                num = 0
-                                og_y = 0
-                                og_x = 0
-                                break  # break out of loop, update row
-                            else:  # next value is <.6, keep going and update num
-                                num += 1
-                    else:
-                        row += 1
-
-        # calculates centroid values for x and y
-        for i in range(len(df)):
-            df.at[i, 'centroid_x'] = np.average(
-                [df.at[i, f"{b_part}" + "_x"] for b_part in bps if df.at[i, f"{b_part}" + "_likelihood"] > threshold])
-            df.at[i, 'centroid_y'] = np.average(
-                [df.at[i, f"{b_part}" + "_y"] for b_part in bps if df.at[i, f"{b_part}" + "_likelihood"] > threshold])
-            # calculates distance traveled from  last frame, velocity, and acceleration
-            if (i > 0):
-                df.at[i, 'distance'] = np.sqrt((df.at[i - 1, 'centroid_x'] - df.at[i, 'centroid_x']) ** 2 + (
-                        df.at[i - 1, 'centroid_y'] - df.at[i, 'centroid_y']) ** 2)
-                df.at[i, 'velocity'] = df.at[i, 'distance'] / (1 / 29)
-                df.at[i, 'acceleration'] = ((df.at[i, 'velocity']) - (df.at[i - 1, 'velocity'])) / (1 / 29)
-        # returns data  frame  with added  centroid  (x/y) columns, distance, velocity and acceleration
-        return df
-
     def save_fp(self, filename):
         file = open(filename, 'wb')
         pkl.dump(self, file)
@@ -596,26 +439,6 @@ class fiberPhotometryCurve:
         # set inplace to True, so that we modify original DF and do not return a virtual copy
         self.fp_df.rename(columns={"Flags": "LedState"}, inplace=True)
         self.fp_df.LedState.replace([16, 17, 18, 20], [0, 1, 2, 4], inplace=True)
-        return
-
-    def calc_avg_peak_props(self, props=None):
-        if props is None:
-            props = ['widths', 'areas_under_curve', 'peak_heights', 'total_events']
-        condensed_props = {}
-        for signal in self.peak_properties:
-            print(self.peak_properties[signal])
-            self.peak_properties[signal]['total_events'] = len(self.peak_properties[signal]['peak_heights'])
-            condensed_props.update(
-                {signal: {"average" + "_" + prop: np.average(self.peak_properties[signal][prop]) for prop in props}})
-        setattr(self, "condensed_stats", condensed_props)
-        return condensed_props
-
-    def reset_peak_params(self, crit_width, curve_type, props=None):
-        deletion_list = [i for i, j in enumerate(self.peak_properties[curve_type]['widths']) if j < crit_width]
-        if props is None:
-            props = ['widths', 'areas_under_curve', 'peak_heights', 'peaks']
-        for prop in props:
-            self.peak_properties[curve_type][prop] = np.delete(self.peak_properties[curve_type][prop], deletion_list)
         return
 
     def within_trial_eta(self, curve, event_times, window, timepoints=True):
@@ -639,11 +462,6 @@ class fiberPhotometryCurve:
         time_int = np.linspace(-(window / 2), window, len(
             self.DF_F_Signals[curve][event_times[0] - (int(ind_plus / 2)):event_times[0] + ind_plus]))
         return eta, ci, time_int
-
-    def eliminate_extreme_values(self, curve, for_i, j):
-        rolled_average = [np.average(np.diff(self.Signal[curve])[i:i + j]) for i in range(for_i)]
-        indice_extrema = np.where(np.diff(rolled_average) < 0)[0] - 1
-        return indice_extrema
 
     def metric_df(self, columns=None):
         if columns is None:
