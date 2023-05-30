@@ -7,6 +7,7 @@ __all__ = ['dlcResults']
 class dlcResults:
     def __init__(self, dlc_file):
         self.dlc_df = pd.read_csv(dlc_file, header=[1, 2], index_col=[0])
+        self.filtered_df = None
         
 
     def kalman_filter(self, x_data, y_data, dt=1):
@@ -48,6 +49,7 @@ class dlcResults:
             kalman_accel[t, 0] = (kalman_means[t, 2] - kalman_means[t-1, 2])
             kalman_accel[t, 1] = (kalman_means[t, 3] - kalman_means[t-1, 3])
 
+
         return kalman_means, kalman_covs, kalman_accel
     
     def calculate_centroids(self, bparts=None):
@@ -59,4 +61,29 @@ class dlcResults:
         
         
     def filter_predictions(self, bparts=None, fps=None):
-            pass
+            if bparts is None:
+                 bparts = ['snout', 'l_ear', 'r_ear', 'front_l_paw', 'front_r_paw', 'back_l_paw', 'back_r_paw', 'base_of_tail', 'tip_of_tail']
+            if fps is None:
+                 fps = 30
+            dt = 1/ fps
+
+            kalman_dict = {}
+            for bpart in bparts:
+                 k_means, _, k_accel = self.kalman_filter(self.dlc_df.loc[:, (bpart,'x')], self.dlc_df.loc[:, (bpart,'y')], dt=dt)
+                 kalman_dict[bpart] = {
+                      'x': k_means[:, 0],
+                      'y': k_means[:, 1],
+                      'velocity_x': k_means[:, 2],
+                      'velocity_y': k_means[:, 3],
+                      'acceleration_x': k_accel[:, 0],
+                      'acceleration_y': k_accel[:, 1] 
+                 }
+                 
+            reformed_dict = {}
+            for outerKey, innerDict in kalman_dict.items():
+                for innerKey, values in innerDict.items():
+                    reformed_dict[(outerKey,innerKey)] = values
+        
+            df = pd.DataFrame.from_dict(reformed_dict)
+            self.filtered_df = df
+            return df
