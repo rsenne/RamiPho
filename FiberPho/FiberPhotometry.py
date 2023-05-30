@@ -218,35 +218,35 @@ class fiberPhotometryCurve:
 
         for key in self.raw_signal.keys():
             # get the timeseries
-            geci_timeseries = self.raw_signal[key]
+            region_timeseries = self.raw_signal[key]
             isobestic_timeseries = self.isobestic_channel[key]
 
             # Perform baseline correction
-            geci_timeseries_corrected = self._als_detrend(geci_timeseries)
+            region_timeseries_corrected = self._als_detrend(region_timeseries)
             isobestic_timeseries_corrected = self._als_detrend(isobestic_timeseries)
             
             # smooth out the data
             if self.smoother == 'kalman':
-                geci_timeseries_corrected = self._kalman_filter(geci_timeseries_corrected)
+                region_timeseries_corrected = self._kalman_filter(region_timeseries_corrected)
             else:
-                geci_timeseries_corrected = self._smooth(geci_timeseries_corrected, kernel=15)
+                region_timeseries_corrected = self._smooth(region_timeseries_corrected, kernel=15)
 
             # Calculate df/f for each timeseries
-            geci_timeseries_corrected = self._df_f(geci_timeseries_corrected)
+            region_timeseries_corrected = self._df_f(region_timeseries_corrected)
             isobestic_timeseries_corrected = self._df_f(isobestic_timeseries_corrected)
 
 
             # Calculate z-scored df/f for each timeseries
-            geci_timeseries_corrected_z = self._df_f(geci_timeseries_corrected, method="z_scored")
+            region_timeseries_corrected_z = self._df_f(region_timeseries_corrected, method="z_scored")
             isobestic_timeseries_corrected_z = self._df_f(isobestic_timeseries_corrected, method="z_scored")
 
-            # Regress out the isobestic signal from the geci signal
+            # Regress out the isobestic signal from the region signal
             if self.regress is True:
-                geci_timeseries_corrected = self._fit_regression(geci_timeseries_corrected, isobestic_timeseries_corrected)
-                geci_timeseries_corrected_z = self._fit_regression(geci_timeseries_corrected_z, isobestic_timeseries_corrected_z)
+                region_timeseries_corrected = self._fit_regression(region_timeseries_corrected, isobestic_timeseries_corrected)
+                region_timeseries_corrected_z = self._fit_regression(region_timeseries_corrected_z, isobestic_timeseries_corrected_z)
 
-            dff_signal[key] = geci_timeseries_corrected
-            dfz_signal[key] = geci_timeseries_corrected_z
+            dff_signal[key] = region_timeseries_corrected
+            dfz_signal[key] = region_timeseries_corrected_z
 
         self.dff_signals = dff_signal
         self.dfz_signals = dfz_signal
@@ -283,22 +283,22 @@ class fiberPhotometryCurve:
     def find_signal(self, neg=False):
         peak_properties = {}
         if not neg:
-            for GECI, sig in self.DF_F_Signals.items():
+            for region, sig in self.DF_F_Signals.items():
                 peaks, properties = find_peaks(sig, height=np.std(sig), distance=131, width=25,
                                                rel_height=0.5)  # height=1.0, distance=130, prominence=0.5, width=25, rel_height=0.90)
                 properties['peaks'] = peaks
                 properties['areas_under_curve'] = self.calc_area(properties['left_bases'], properties['right_bases'],
-                                                                 self.DF_F_Signals[GECI])
+                                                                 self.DF_F_Signals[region])
                 properties['widths'] *= self._sample_time_
-                peak_properties[GECI] = properties
+                peak_properties[region] = properties
         else:
-            for GECI, sig in self.DF_F_Signals.items():
+            for region, sig in self.DF_F_Signals.items():
                 peaks, properties = find_peaks(-sig, height=np.std(sig), distance=131, width=25, rel_height=0.5)
                 properties['peaks'] = peaks
                 properties['areas_under_curve'] = self.calc_area(properties['left_bases'], properties['right_bases'],
-                                                                 self.DF_F_Signals[GECI])
+                                                                 self.DF_F_Signals[region])
                 properties['widths'] *= self._sample_time_
-                peak_properties[GECI] = properties
+                peak_properties[region] = properties
         return peak_properties
 
     def visual_check_peaks(self, signal):
@@ -507,8 +507,8 @@ class fiberPhotometryExperiment:
                     print('No task supplied, assuming all animals are in the same group.')
 
         self.__set_permutation_dicts__('task', 'treatment')
-        for GECI in self.curves[1].DF_F_Signals.keys():
-            self.__set_crit_width__(curve_type=GECI)
+        for region in self.curves[1].DF_F_Signals.keys():
+            self.__set_crit_width__(curve_type=region)
 
     def __add_to_attribute_dict__(self, attr, value, attr_val):
         if hasattr(self, attr):
@@ -813,37 +813,37 @@ class FiberPhotometryCollection:
             else:
                 self.curves.update({arg.ID:arg})
                 
-    def peak_dict(self, geci="GCaMP", pos=True):
+    def peak_dict(self, region, pos=True):
         """Used to create a dictionary that maps each individual curve ID to its event attributes. The absic idea being this will be apssed to a later function for a well formatted df.
         Args:
-            geci (str, optional): Which GECI peak properties to look at. Defaults to "GCaMP".
+            region (str, optional): Which region peak properties to look at.
         Returns:
             peak_dict (dict): dictionary that maps each curve to its peak properties e.g. AUC, fwhm, etc.
         """
         if pos:
             id = [k for k in self.curves]
-            peak_times = [v.Timestamps[geci][v.peak_properties[geci]['peaks']] for v in self.curves.values()]
-            peak_heights = [v.peak_properties[geci]['peak_heights'] for v in self.curves.values()]
-            auc = [v.peak_properties[geci]["areas_under_curve"] for v in self.curves.values()]
-            fwhm = [v.peak_properties[geci]["widths"] for v in self.curves.values()]
+            peak_times = [v.Timestamps[region][v.peak_properties[region]['peaks']] for v in self.curves.values()]
+            peak_heights = [v.peak_properties[region]['peak_heights'] for v in self.curves.values()]
+            auc = [v.peak_properties[region]["areas_under_curve"] for v in self.curves.values()]
+            fwhm = [v.peak_properties[region]["widths"] for v in self.curves.values()]
             peak_dict = {"ID": id, "Peak_Times": peak_times, "Amplitudes": peak_heights, "AUC":auc, "FWHM": fwhm}
         else:
             id = [k for k in self.curves]
-            peak_times = [v.Timestamps[geci][v.neg_peak_properties[geci]['peaks']] for v in self.curves.values()]
-            peak_heights = [-v.neg_peak_properties[geci]['peak_heights'] for v in self.curves.values()]
-            auc = [v.neg_peak_properties[geci]["areas_under_curve"] for v in self.curves.values()]
-            fwhm = [v.neg_peak_properties[geci]["widths"] for v in self.curves.values()]
+            peak_times = [v.Timestamps[region][v.neg_peak_properties[region]['peaks']] for v in self.curves.values()]
+            peak_heights = [-v.neg_peak_properties[region]['peak_heights'] for v in self.curves.values()]
+            auc = [v.neg_peak_properties[region]["areas_under_curve"] for v in self.curves.values()]
+            fwhm = [v.neg_peak_properties[region]["widths"] for v in self.curves.values()]
             peak_dict = {"ID": id, "Peak_Times": peak_times, "Amplitudes": peak_heights, "AUC":auc, "FWHM": fwhm}
         return peak_dict
 
-    def histogram_2d(self, geci):
+    def histogram_2d(self, region):
         """Plots a 2D event histogram where Y=Amplitudes and X=FWHM. The idea is to see if there is an easily defined threshold where all events inside that 2D bin are negative.
 
         Args:
-            geci (str): Which indicator curve to plot the 2D event histogram for. Defaults to "GCaMP".
+            region (str): Which indicator curve to plot the 2D event histogram for.
         """
-        pos_peak_dict = self.peak_dict(geci=geci, pos=True)
-        neg_peak_dict = self.peak_dict(geci=geci, pos=False)
+        pos_peak_dict = self.peak_dict(region=region, pos=True)
+        neg_peak_dict = self.peak_dict(region=region, pos=False)
         event_df = pd.concat((pd.DataFrame(pos_peak_dict).apply(pd.Series.explode).reset_index(drop=True), pd.DataFrame(neg_peak_dict).apply(pd.Series.explode).reset_index(drop=True)))
         event_df.dropna(inplace=True)
         plt.hist2d(x='Amplitudes', y='FWHM', data=event_df)
@@ -853,25 +853,25 @@ class FiberPhotometryCollection:
     def eliminate_events(self):
         pass
 
-    def event_summaries(self, geci='gcamp'):
+    def event_summaries(self, region):
         """Creates a DataFrame that contains all of the relevant event information e.g. AUC, FWHM, etc. This can be used for further analysis e.g. stats across groups linear mixed models etc.
         Args:
-            geci (str, optional): _description_. Defaults to 'gcamp'.
+            region (str, optional): String to grab region trace of choice e.g. Region0G, Region1R, etc.
         Returns:
             df_transformed(pd.DataFrame): A DataFrame that contains a conglomeration of all the events across animals. 
         """
-        dict = self.peak_dict(geci)
+        dict = self.peak_dict(region)
         df = pd.DataFrame(dict)
         df_transformed = df.apply(pd.Series.explode).reset_index(drop=True)
         return df_transformed
     
 
-    def raster_plot(self, task, treatment, geci, xtick_range=None, xtick_freq=None):
+    def raster_plot(self, task, treatment, region, xtick_range=None, xtick_freq=None):
         """Raster plot: Generate a raster plot of Z-scored fiber photometry traces.
         Args:
             task (str): String that represents the task e.g. FC, Recall, Ext etc.Should be identical to what was passed in fiberPhotometryCurve.
             treatment (str): String that represents the treatment e.g. eYFP, ChR2, Shock etc. Should be identical to what was passed in fiberPhotometryCurve.
-            geci (str): String to grab GECI trace of choice e.g. GCaMP
+            region (str): String to grab region trace of choice e.g. Region0G, Region1R, etc.
             xtick_range (int, optional): Length in time of session. Defaults to None.
             xtick_freq (int, optional): How many labels in [0, xtick_range]; end points inclusive. Defaults to None.
         Returns:
@@ -879,10 +879,10 @@ class FiberPhotometryCollection:
             matplotlib axis: a matplotlib axis object
         """
         curves = self[task, treatment]
-        min_len = np.min([len(curve[geci]) for curve in curves])
+        min_len = np.min([len(curve[region]) for curve in curves])
         raster_array = np.zeros(shape=(len(curves), min_len))
         for i, curve in enumerate(curves):
-            raster_array[i] = curve.DF_Z_Signals[geci][:min_len]
+            raster_array[i] = curve.DF_Z_Signals[region][:min_len]
 
         fig, ax = plt.subplots()
         sb.heatmap(raster_array, cbar=True, cbar_kws={"label":r"$\frac{dF}{F}$"}, center=0, yticklabels=False, ax=ax)
