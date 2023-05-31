@@ -39,7 +39,6 @@ class fiberPhotometryCurve:
         self.treatment = treatment
         self.anymaze_file = anymaze_file
         self.DLC_file = dlc_file
-        self.offset = offset
         self.regress = regress
         self.smoother = smoother
         self.raw_signal = None
@@ -48,6 +47,11 @@ class fiberPhotometryCurve:
         self.dfz_signals = None
         self.anymaze_results = None
         self.dlc_results = None
+
+        if offset is None:
+            self.offset = 0
+        else:
+            self.offset = offset
 
         # determine sample time
         self._sample_time_ = np.diff(self.fp_df['Timestamp'])[1]
@@ -95,7 +99,12 @@ class fiberPhotometryCurve:
 
         # Get the unique region columns
         region_columns = self.fp_df.columns[self.fp_df.columns.str.contains('Region')].tolist()
+
+        # Exclude data before offset
+        self.fp_df = self.fp_df[self.fp_df['Timestamp'] >= self.offset + self.__T0__].reset_index(drop=True)
         
+        # creat new initial time variable for later correction
+        temp_t0 = self.fp_df.loc[0, 'Timestamp']
 
         # Find the length of the shortest trace
         shortest_trace_length = float('inf')
@@ -118,7 +127,7 @@ class fiberPhotometryCurve:
         for state in led_state:
             if not self.fp_df[self.fp_df['LedState'] == state].Timestamp.empty:
                 # Store the deinterleaved timestamps for the LEDState
-                timestamps[str(state)] = self.fp_df[self.fp_df['LedState'] == state].Timestamp.reset_index(drop=True) - self.__T0__
+                timestamps[str(state)] = self.fp_df[self.fp_df['LedState'] == state].Timestamp.reset_index(drop=True) - temp_t0
 
         # Trim the signals and timestamps to the length of the shortest trace
         for column, led_state in zip(raw_signal.keys(), led_state):

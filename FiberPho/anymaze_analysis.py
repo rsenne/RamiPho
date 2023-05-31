@@ -35,16 +35,15 @@ class anymazeResults:
 
 
 
-    def calculate_binned_freezing(self, bin_duration=120, start=None, end=None, format='%H:%M:%S.%f', time_col='Time', behavior_col ='Freezing'):
-        self.anymaze_df[time_col] = pd.to_datetime(self.anymaze_df.Time, format=format)
+    def calculate_binned_freezing(self, bin_duration=120, start=None, end=None, offset=0, format='%H:%M:%S.%f', time_col='Time', behavior_col ='Freezing'):
+        # convert to datetimes and subtract any offset
+        self.anymaze_df[time_col] = pd.to_datetime(self.anymaze_df.Time, format=format) - pd.Timedelta(seconds=offset)
         self.anymaze_df['duration'] = self.anymaze_df[time_col].diff().dt.total_seconds()
 
         # If custom_start or custom_end is None, use the first or last timestamp respectively.
         start = pd.to_datetime(start, format=format) if start is not None else self.anymaze_df[time_col].iloc[0]
         end = pd.to_datetime(end, format=format) if end is not None else self.anymaze_df[time_col].iloc[-1]
 
-        print(start)
-        print(end)
 
         self.anymaze_df['bin'] = pd.cut(self.anymaze_df[time_col], pd.date_range(start=start,
                                                 end=end,
