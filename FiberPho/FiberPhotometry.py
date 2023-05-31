@@ -9,10 +9,11 @@ import seaborn as sb
 import statsmodels.api as sm
 from scipy import sparse
 from scipy.integrate import simpson
-from scipy.interpolate import splrep, splev
 from scipy.ndimage import uniform_filter1d
 from scipy.signal import find_peaks
 from scipy.sparse.linalg import spsolve
+from FiberPho.anymaze_analysis import anymazeResults
+from FiberPho.dlc_analysis import dlcResults
 import pykalman
 
 __all__ = ["fiberPhotometryCurve", "fiberPhotometryExperiment", "FiberPhotometryCollection"]
@@ -45,6 +46,8 @@ class fiberPhotometryCurve:
         self.timestamps = None
         self.dff_signals = None
         self.dfz_signals = None
+        self.anymaze_results = None
+        self.dlc_results = None
 
         # determine sample time
         self._sample_time_ = np.diff(self.fp_df['Timestamp'])[1]
@@ -57,6 +60,8 @@ class fiberPhotometryCurve:
 
         # do preprocessing as part of initilization
         self._process_data()
+        self.region_peak_properties = self.find_signal()
+
 
     def __iter__(self):
         return iter(list(self.dff_signals.values()))
@@ -74,7 +79,7 @@ class fiberPhotometryCurve:
             return False
 
     def __hash__(self):
-        return hash(self.DF_F_Signals.values())
+        return hash(self.dff_signals.values())
     
     def __getitem__(self, idx):
         return self.dff_signals[idx]
@@ -113,7 +118,7 @@ class fiberPhotometryCurve:
         for state in led_state:
             if not self.fp_df[self.fp_df['LedState'] == state].Timestamp.empty:
                 # Store the deinterleaved timestamps for the LEDState
-                timestamps[str(state)] = self.fp_df[self.fp_df['LedState'] == state].Timestamp
+                timestamps[str(state)] = self.fp_df[self.fp_df['LedState'] == state].Timestamp.reset_index(drop=True) - self.__T0__
 
         # Trim the signals and timestamps to the length of the shortest trace
         for column, led_state in zip(raw_signal.keys(), led_state):
@@ -125,8 +130,6 @@ class fiberPhotometryCurve:
         self.isobestic_channel = isobestic_data
         self.Timestamps = timestamps
         return
-    
-
     
     @staticmethod
     @nb.jit(nopython=True)
@@ -250,53 +253,34 @@ class fiberPhotometryCurve:
 
         self.dff_signals = dff_signal
         self.dfz_signals = dfz_signal
-
+    
+    def process_behavioral_data(self):
+        self.anymaze_results = anymazeResults(self.anymaze_file)
+        self.dlc_results = dlcResults(self.dlc_file)
+        return
 
     @staticmethod
     def calc_area(l_index, r_index, timeseries):
         areas = np.asarray([simpson(timeseries[i:j]) for i, j in zip(l_index, r_index)])
         return areas
 
-
-    def process_data(self):  # correct baseline, smoothed with uniform filter
-        signals = [signal for signal in self.Signal.values()]  # list of raw signals
-        baseline_corr_signal = [self._als_detrend(sig) for sig in signals]  # list of baseline corrected signals
-        df_f_signals = [self._df_f(s, kind='standard') for s in baseline_corr_signal]
-        df_z_signals = [self._df_f(s, kind='std') for s in baseline_corr_signal]
-        for i in range(len(df_f_signals)):
-            if abs(np.median(df_f_signals[i])) < 0.05:
-                df_f_signals[i] = self._als_detrend(df_f_signals[i])
-                df_z_signals[i] = self._als_detrend(df_z_signals[i])
-        # smoothed like a baby's bottom
-        smoothed_f_signals = [self.kalman_filter(timeseries) for timeseries in
-                              df_f_signals]
-        smoothed_z_signals = [self.kalman_filter(timeseries) for timeseries in
-                              df_z_signals]
-        return {identity: signal for identity, signal in zip(self.Signal.keys(), smoothed_f_signals)}, {identity: signal
-                                                                                                        for
-                                                                                                        identity, signal
-                                                                                                        in
-                                                                                                        zip(self.Signal.keys(),
-                                                                                                            smoothed_z_signals)}
-
-
     def find_signal(self, neg=False):
         peak_properties = {}
         if not neg:
-            for region, sig in self.DF_F_Signals.items():
+            for region, sig in self.dff_signals.items():
                 peaks, properties = find_peaks(sig, height=np.std(sig), distance=131, width=25,
                                                rel_height=0.5)  # height=1.0, distance=130, prominence=0.5, width=25, rel_height=0.90)
                 properties['peaks'] = peaks
                 properties['areas_under_curve'] = self.calc_area(properties['left_bases'], properties['right_bases'],
-                                                                 self.DF_F_Signals[region])
+                                                                 self.dff_signals[region])
                 properties['widths'] *= self._sample_time_
                 peak_properties[region] = properties
         else:
-            for region, sig in self.DF_F_Signals.items():
+            for region, sig in self.dff_signals.items():
                 peaks, properties = find_peaks(-sig, height=np.std(sig), distance=131, width=25, rel_height=0.5)
                 properties['peaks'] = peaks
                 properties['areas_under_curve'] = self.calc_area(properties['left_bases'], properties['right_bases'],
-                                                                 self.DF_F_Signals[region])
+                                                                 self.dff_signals[region])
                 properties['widths'] *= self._sample_time_
                 peak_properties[region] = properties
         return peak_properties
@@ -307,17 +291,17 @@ class fiberPhotometryCurve:
         :param signal: string of which signal to check
         :return:
         """
-        if hasattr(self, "peak_properties"):
+        if hasattr(self, "region_peak_properties"):
             plt.figure()
-            plt.plot(self.DF_F_Signals[signal])
-            plt.plot(self.peak_properties[signal]['peaks'],
-                     self.DF_F_Signals[signal][self.peak_properties[signal]['peaks']], "x")
-            plt.vlines(x=self.peak_properties[signal]['peaks'],
-                       ymin=self.DF_F_Signals[signal][self.peak_properties[signal]['peaks']] -
-                            self.peak_properties[signal]["prominences"],
-                       ymax=self.DF_F_Signals[signal][self.peak_properties[signal]['peaks']], color="C1")
-            plt.hlines(y=self.peak_properties[signal]["width_heights"], xmin=self.peak_properties[signal]["left_ips"],
-                       xmax=self.peak_properties[signal]["right_ips"], color="C1")
+            plt.plot(self.dff_signals[signal])
+            plt.plot(self.region_peak_properties[signal]['peaks'],
+                     self.dff_signals[signal][self.region_peak_properties[signal]['peaks']], "x")
+            plt.vlines(x=self.region_peak_properties[signal]['peaks'],
+                       ymin=self.dff_signals[signal][self.region_peak_properties[signal]['peaks']] -
+                            self.region_peak_properties[signal]["prominences"],
+                       ymax=self.dff_signals[signal][self.region_peak_properties[signal]['peaks']], color="C1")
+            plt.hlines(y=self.region_peak_properties[signal]["width_heights"], xmin=self.region_peak_properties[signal]["left_ips"],
+                       xmax=self.region_peak_properties[signal]["right_ips"], color="C1")
             plt.show()
         else:
             raise KeyError(f'{signal} is not in {self}')
@@ -375,59 +359,6 @@ class fiberPhotometryCurve:
                       time_val_1]  # list of start indices of freezing bouts
         return anymaze_file, binary_freeze_vec, inds_start, inds_end
 
-    def calc_binned_freezing(self, bins):
-        bin_time = np.diff(bins)[0]
-        if hasattr(self, 'OffSet'):
-            bins = [x + self.OffSet for x in bins]
-        per_freezing = pd.DataFrame()
-        self.behavioral_data['Anymaze']['anymaze_df']['bin'] = pd.cut(
-            self.behavioral_data['Anymaze']['anymaze_df'].seconds, bins, include_lowest=True)
-        anymaze_df = self.behavioral_data['Anymaze']['anymaze_df'].dropna()
-        unique_bins = anymaze_df.bin.unique()
-        freeze_time = np.zeros(shape=(len(bins) - 1,))
-        if len(unique_bins) < len(bins) - 1:
-            i = len(bins) - 1 - len(unique_bins)
-        else:
-            i = 0
-        for bin in unique_bins:
-            if i > len(bins) - 2:
-                freeze_time = np.zeros(shape=(len(bins) - 1,))
-            else:
-                # print(i)
-                df = anymaze_df[anymaze_df['bin'] == bin].reset_index()
-                if df.at[0, 'Freezing'] == 0:
-                    even = True
-                else:
-                    even = False
-                if even:
-                    time_freezing = np.sum([x for x in np.diff(df['seconds'])[1::2]])
-                    if df.Freezing.iloc[-1] == 1:
-                        delta_t_e = df.at[0, 'bin'].right - df.seconds.iloc[-1]
-                    else:
-                        delta_t_e = 0
-                    if df.Freezing.iloc[0] == 0:
-                        delta_t_b = df.seconds.iloc[0] - df.at[0, 'bin'].left
-                    else:
-                        delta_t_b = 0
-                    time_freezing += delta_t_e + delta_t_b
-                    freeze_time[i] = time_freezing
-                    i += 1
-                else:
-                    time_freezing = np.sum([x for x in np.diff(df['seconds'])[0::2]])
-                    if df.Freezing.iloc[-1] == 1:
-                        delta_t_e = df.at[0, 'bin'].right - df.seconds.iloc[-1]
-                    else:
-                        delta_t_e = 0
-                    if df.Freezing.iloc[0] == 0:
-                        delta_t_b = df.seconds.iloc[0] - df.at[0, 'bin'].left
-                    else:
-                        delta_t_b = 0
-                    time_freezing += delta_t_e + delta_t_b
-                    freeze_time[i] = time_freezing
-                    i += 1
-        setattr(self, 'binned_freezing', freeze_time / bin_time)
-        return
-
     def save_fp(self, filename):
         file = open(filename, 'wb')
         pkl.dump(self, file)
@@ -449,32 +380,32 @@ class fiberPhotometryCurve:
         else:
             inds = event_times
         bound_cases = int(len(list(x for x in event_times if ((x + ind_plus) - (x - int(ind_plus / 2))) < len(
-            self.DF_F_Signals[curve][event_times[0] - (int(ind_plus / 2)):event_times[0] + ind_plus]))))
+            self.dff_signals[curve][event_times[0] - (int(ind_plus / 2)):event_times[0] + ind_plus]))))
         if bound_cases == 0:
             part_traces = np.array(
-                [self.DF_F_Signals[curve][ind - (int(ind_plus / 2)):ind + ind_plus].tolist() for ind in inds])
+                [self.dff_signals[curve][ind - (int(ind_plus / 2)):ind + ind_plus].tolist() for ind in inds])
         else:
             part_traces = np.array(
-                [self.DF_F_Signals[curve][ind - (int(ind_plus / 2)):ind + ind_plus].tolist() for ind in
+                [self.dff_signals[curve][ind - (int(ind_plus / 2)):ind + ind_plus].tolist() for ind in
                  inds[:-bound_cases]])
         eta = np.average(part_traces, axis=0)
         ci = 1.96 * np.std(part_traces, axis=0) / np.sqrt(np.shape(part_traces)[0])
         time_int = np.linspace(-(window / 2), window, len(
-            self.DF_F_Signals[curve][event_times[0] - (int(ind_plus / 2)):event_times[0] + ind_plus]))
+            self.dff_signals[curve][event_times[0] - (int(ind_plus / 2)):event_times[0] + ind_plus]))
         return eta, ci, time_int
 
     def metric_df(self, columns=None):
         if columns is None:
             columns = ['peaks', 'peak_heights', 'areas_under_curve', 'widths']
         if self.__DUAL_COLOR:
-            metric_df_gcamp = pd.DataFrame(self.peak_properties['GCaMP'], columns=columns)
-            metric_df_gcamp.loc[:, 'Timestamps'] = self.Timestamps['GCaMP'][self.peak_properties['GCaMP']['peaks']]
-            metric_df_rcamp = pd.DataFrame(self.peak_properties['RCaMP'], columns=columns)
-            metric_df_rcamp.loc[:, 'Timestamps'] = self.Timestamps['RCaMP'][self.peak_properties['RCaMP']['peaks']]
+            metric_df_gcamp = pd.DataFrame(self.region_peak_properties['GCaMP'], columns=columns)
+            metric_df_gcamp.loc[:, 'Timestamps'] = self.Timestamps['GCaMP'][self.region_peak_properties['GCaMP']['peaks']]
+            metric_df_rcamp = pd.DataFrame(self.region_peak_properties['RCaMP'], columns=columns)
+            metric_df_rcamp.loc[:, 'Timestamps'] = self.Timestamps['RCaMP'][self.region_peak_properties['RCaMP']['peaks']]
             return metric_df_gcamp, metric_df_rcamp
         else:
-            metric_df_gcamp = pd.DataFrame(self.peak_properties['GCaMP'], columns=columns)
-            metric_df_gcamp.loc[:, 'Timestamps'] = self.Timestamps['GCaMP'][self.peak_properties['GCaMP']['peaks']]
+            metric_df_gcamp = pd.DataFrame(self.region_peak_properties['GCaMP'], columns=columns)
+            metric_df_gcamp.loc[:, 'Timestamps'] = self.Timestamps['GCaMP'][self.region_peak_properties['GCaMP']['peaks']]
             return metric_df_gcamp
 
 
@@ -507,7 +438,7 @@ class fiberPhotometryExperiment:
                     print('No task supplied, assuming all animals are in the same group.')
 
         self.__set_permutation_dicts__('task', 'treatment')
-        for region in self.curves[1].DF_F_Signals.keys():
+        for region in self.curves[1].dff_signals.keys():
             self.__set_crit_width__(curve_type=region)
 
     def __add_to_attribute_dict__(self, attr, value, attr_val):
@@ -637,7 +568,7 @@ class fiberPhotometryExperiment:
         sample_time = np.diff(time_array[0])[1]
         ind_plus = window / sample_time
         vector_array = np.array(
-            [trace.DF_F_Signals[curve][0:max_ind].tolist() for trace in next(iter(getattr(self, group).values()))])
+            [trace.dff_signals[curve][0:max_ind].tolist() for trace in next(iter(getattr(self, group).values()))])
         if shuffle:
             vector_array_copy = vector_array.T
             np.random.shuffle(vector_array_copy)
@@ -741,7 +672,7 @@ class fiberPhotometryExperiment:
         elif time_length > min_time:  # desired time_length longer than min_time
             raise Exception(
                 "Desired time length is longer than at least one trace within this group, consider lowering desired time length!")
-        timeseries = np.array([series for series in [t.DF_F_Signals[curve][0:time_length].tolist() for t in
+        timeseries = np.array([series for series in [t.dff_signals[curve][0:time_length].tolist() for t in
                                                      next(iter(getattr(self, group).values()))]])
         return timeseries
 
