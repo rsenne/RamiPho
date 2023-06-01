@@ -62,7 +62,7 @@ class dlcResults:
         
     def filter_predictions(self, bparts=None, fps=None):
             if bparts is None:
-                 bparts = ['snout', 'l_ear', 'r_ear', 'front_l_paw', 'front_r_paw', 'back_l_paw', 'back_r_paw', 'base_of_tail', 'tip_of_tail']
+                 bparts = ['snout', 'l_ear', 'r_ear', 'front_l_paw', 'front_r_paw', 'back_l_paw', 'back_r_paw', 'base_of_tail', 'tip_of_tail', 'centroid']
             if fps is None:
                  fps = 30
             dt = 1/ fps
