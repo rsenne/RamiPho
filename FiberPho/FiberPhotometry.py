@@ -542,31 +542,28 @@ class FiberPhotometryCollection:
         number_of_indices = int(window*1.5*15)
 
         # determine if we need timestamps for green or red indicator
-        if "G" in region:
-            time_idx = "2"
-        else:
-            time_idx = "4"
+        time_idx = "2" if "G" in region else "4"
 
-        ###TODO: Gonna need some if-else logic here or something to determind what the length of the events list is ###
+        def event_interpolation(curve, events_):
+            interp = scipy.interpolate.interp1d(curve.Timestamps[time_idx], curve[region], kind='cubic')
+            within_eta_ = np.zeros((len(events_), number_of_indices))
+            for i, event in enumerate(events_):
+                time_period = np.linspace(event-(window/2), event+window, number_of_indices)
+                within_eta_[i] = interp(time_period)
+            return np.average(within_eta_, axis=0)
+
         curves = self[task, treatment]
         across_eta_ = np.zeros((len(curves), number_of_indices))
+
+        # If there's only one event, repeat it for each curve
         if len(events) == 1:
-            for j, curve in enumerate(curves):
-                interp = scipy.interpolate.interp1d(curve.Timestamps[time_idx], curve[region], kind='cubic')
-                within_eta_ = np.zeros((len(events[0]), int(number_of_indices)))
-                for i, event in enumerate(events[0]):
-                    time_period = np.linspace(event-(window/2), event+window, number_of_indices)
-                    within_eta_[i] = interp(time_period)
-                across_eta_[j] = np.average(within_eta_, axis=0) 
-        else:         
-            for j, curve in enumerate(curves):
-                within_eta_ = np.zeros((len(events[j]), number_of_indices))
-                interp = scipy.interpolate.interp1d(curve.Timestamps[time_idx], curve[region], kind='cubic')
-                for i, event in enumerate(events[j]):
-                    time_period = np.linspace(event-(window/2), event+window, number_of_indices)
-                    within_eta_[i] = interp(time_period)
-                across_eta_[j] = np.average(within_eta_, axis=0)
+            events = events * len(curves)
+        
+        for j, curve in enumerate(curves):
+            across_eta_[j] = event_interpolation(curve, events[j])
+
         average_trace = np.average(across_eta_, axis=0)
+
         # choose t-confidence interval or bootstrapped
         if ci == 'tci':
             c_int = self.tci(across_eta_)
@@ -574,7 +571,7 @@ class FiberPhotometryCollection:
             c_int = self.bci(across_eta_, num_samples=1000)
         else:
             raise ValueError("Confidence interval options are 'tci' or 'bci'")
-        
+    
         # make a figure
         fig, axs = plt.subplots()
         time = np.linspace(-window/2, window, number_of_indices)
