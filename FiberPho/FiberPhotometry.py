@@ -16,7 +16,7 @@ from FiberPho.anymaze_analysis import anymazeResults
 from FiberPho.dlc_analysis import dlcResults
 import pykalman
 
-__all__ = ["fiberPhotometryCurve", "fiberPhotometryExperiment", "FiberPhotometryCollection"]
+__all__ = ["fiberPhotometryCurve", "FiberPhotometryCollection"]
 
 
 class fiberPhotometryCurve:
@@ -100,7 +100,6 @@ class fiberPhotometryCurve:
 
         # Exclude data before offset
         self.fp_df = self.fp_df[self.fp_df['Timestamp'] >= self.offset].reset_index(drop=True)
-        self.fp_df.head(n=3)
 
         # creat new initial time variable for later correction
         temp_t0 = self.fp_df.loc[0, 'Timestamp']
@@ -130,7 +129,7 @@ class fiberPhotometryCurve:
                     drop=True) - temp_t0
 
         # Trim the signals and timestamps to the length of the shortest trace
-        for column, led_state in zip(raw_signal.keys(), led_state):
+        for column, led_state in zip(list(isobestic_data.keys()) + list(raw_signal.keys()), led_state):
             raw_signal[column] = raw_signal[column][:shortest_trace_length]
             isobestic_data[column] = isobestic_data[column][:shortest_trace_length]
             timestamps[str(led_state)] = timestamps[str(led_state)][:shortest_trace_length]
@@ -285,8 +284,6 @@ class fiberPhotometryCurve:
 
             # Regress out the isobestic signal from the region signal
             if self.regress is True:
-                print(len(region_timeseries_corrected))
-                print(len(isobestic_timeseries_corrected))
                 region_timeseries_corrected = self._fit_regression(region_timeseries_corrected,
                                                                    isobestic_timeseries_corrected)
                 region_timeseries_corrected_z = self._fit_regression(region_timeseries_corrected_z,
@@ -371,67 +368,6 @@ class fiberPhotometryCurve:
         else:
             raise KeyError(f'{signal} is not in {self}')
         return
-
-
-class fiberPhotometryExperiment:
-    def __init__(self, *args):
-        self.treatment = {}
-        self.task = {}
-        self.curves = [arg for arg in args]
-        self.dlc = {}  # csv
-
-    def mt_event_triggered_average(self, curve, event_times, window, group, ci_type='t', shuffle=False,
-                                   timepoint=True):
-        max_ind = np.min(
-            [len(x) for x in [t.Timestamps[curve].tolist() for t in next(iter(getattr(self, group).values()))]])
-        time_array = np.array(
-            [time.Timestamps[curve][0:max_ind].tolist() for time in next(iter(getattr(self, group).values()))])
-        # we make an assumption here that all animals were recorded at same fps, ergo, the sample_time should be the
-        # same for all animals
-        sample_time = np.diff(time_array[0])[1]
-        ind_plus = window / sample_time
-        vector_array = np.array(
-            [trace.dff_signals[curve][0:max_ind].tolist() for trace in next(iter(getattr(self, group).values()))])
-        if shuffle:
-            vector_array_copy = vector_array.T
-            np.random.shuffle(vector_array_copy)
-            vector_array = vector_array_copy.T
-        inds = []
-        if timepoint:
-            for i in range(len(event_times)):
-                tps = [np.argmin(np.abs(time_array[i] - event_times[i][j])) for j in range(len(event_times[i]))]
-                inds.append(tps)
-        else:
-            inds = event_times
-        mt_eta = []
-        for animal in range(np.shape(vector_array)[0]):
-            if len(event_times) != 1:
-                trace_len = int(ind_plus) + int(ind_plus / 2)
-                part_traces = [vector_array[animal][indice - (int(ind_plus / 2)):int(indice + ind_plus)].tolist() for
-                               indice in inds[animal]]
-                part_traces = [x for x in part_traces if len(x) == trace_len]
-                eta = np.average(np.array(part_traces), axis=0)
-                mt_eta.append(eta)
-            else:
-                part_traces = np.array(
-                    [vector_array[animal][indice - (int(ind_plus / 2)):int(indice + ind_plus)].tolist() for indice in
-                     inds[0]])
-                eta = np.average(np.array(part_traces), axis=0)
-                mt_eta.append(eta)
-                # eta = np.average(np.array(part_traces), axis=0)
-            # mt_eta.append(eta)
-        mt_eta = np.array(mt_eta) - np.median(mt_eta, keepdims=True, axis=1)
-        av_tr = np.average(mt_eta, axis=0)
-        av_tr = av_tr - np.median(av_tr)
-        if ci_type == 't':
-            ci = 1.96 * np.std(mt_eta, axis=0) / np.sqrt(np.shape(mt_eta)[0])
-        elif ci_type == 'bs':
-            ci = self.bootstrap_ci(mt_eta, 0.05, niter=1000)
-        else:
-            ci = 0
-        sem = np.std(mt_eta, axis=0) / np.sqrt(np.shape(mt_eta)[0])
-        time_int = np.linspace(-window / 2, window, len(av_tr))
-        return av_tr, mt_eta, time_int, ci, sem
 
 
 class FiberPhotometryCollection:
@@ -539,7 +475,6 @@ class FiberPhotometryCollection:
             # Generate bootstrap samples for the current time point
             rints = rng.integers(0, n, num_samples)
             bootstrap_array[:, i] = data[rints, i]
-        print(bootstrap_array)
 
         sig = 1 - cl
         ci[0, :] = np.percentile(bootstrap_array, q=(sig / 2)*100, axis=0)
@@ -604,7 +539,7 @@ class FiberPhotometryCollection:
     def multi_event_eta(self, task, treatment, region,  events=None, window=3, ci='tci', sig_duration=8):
         
         # window in seconds times 30 indices per second and half the window period to visualize before
-        number_of_indices = window*1.5*30
+        number_of_indices = int(window*1.5*15)
 
         # determine if we need timestamps for green or red indicator
         if "G" in region:
@@ -614,15 +549,23 @@ class FiberPhotometryCollection:
 
         ###TODO: Gonna need some if-else logic here or something to determind what the length of the events list is ###
         curves = self[task, treatment]
-        across_eta_ = np.zeros((len(curves), int(number_of_indices)))
-        for j, curve in enumerate(curves):
-            within_eta_ = np.zeros((len(events[j]), int(number_of_indices)))
-            interp = scipy.interpolate.interp1d(curve.Timestamps[time_idx], curve[region], kind='cubic')
-            for i, event in enumerate(events[j]):
-                time_period = np.linspace(event-(window/2), event+window, int(number_of_indices))
-                within_eta_[i] = interp(time_period)
-            across_eta_[j] = np.average(within_eta_, axis=0)
-
+        across_eta_ = np.zeros((len(curves), number_of_indices))
+        if len(events) == 1:
+            for j, curve in enumerate(curves):
+                interp = scipy.interpolate.interp1d(curve.Timestamps[time_idx], curve[region], kind='cubic')
+                within_eta_ = np.zeros((len(events[0]), int(number_of_indices)))
+                for i, event in enumerate(events[0]):
+                    time_period = np.linspace(event-(window/2), event+window, number_of_indices)
+                    within_eta_[i] = interp(time_period)
+                across_eta_[j] = np.average(within_eta_, axis=0) 
+        else:         
+            for j, curve in enumerate(curves):
+                within_eta_ = np.zeros((len(events[j]), number_of_indices))
+                interp = scipy.interpolate.interp1d(curve.Timestamps[time_idx], curve[region], kind='cubic')
+                for i, event in enumerate(events[j]):
+                    time_period = np.linspace(event-(window/2), event+window, number_of_indices)
+                    within_eta_[i] = interp(time_period)
+                across_eta_[j] = np.average(within_eta_, axis=0)
         average_trace = np.average(across_eta_, axis=0)
         # choose t-confidence interval or bootstrapped
         if ci == 'tci':
@@ -634,11 +577,11 @@ class FiberPhotometryCollection:
         
         # make a figure
         fig, axs = plt.subplots()
-        time = np.linspace(window/2, window, number_of_indices)
+        time = np.linspace(-window/2, window, number_of_indices)
         axs.plot(time, average_trace)
-        axs.fill_between(time, c_int[0, :], c_int[0, :], alpha=0.3)
+        axs.fill_between(time, c_int[0, :], c_int[1, :], alpha=0.3)
 
-        return fig, axs
+        return fig, axs, across_eta_
 
     def event_summaries(self, region):
         """Creates a DataFrame that contains all the relevant event information e.g. AUC, FWHM, etc. This can be used
