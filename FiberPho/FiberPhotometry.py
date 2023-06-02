@@ -43,6 +43,7 @@ class fiberPhotometryCurve:
         self.dfz_signals = None
         self.anymaze_results = None
         self.dlc_results = None
+        self.interp = None
 
         if offset is None:
             self.offset = 0
@@ -84,6 +85,8 @@ class fiberPhotometryCurve:
         return self.dff_signals[idx]
 
     def _extract_data(self):
+        """_summary_
+        """
         # Initialize the data structures
         raw_signal = {}
         isobestic_data = {}
@@ -149,6 +152,17 @@ class fiberPhotometryCurve:
 
     @staticmethod
     def _als_detrend(y, lam=10e7, p=0.05, niter=100):  # asymmetric least squares smoothing method
+        """_summary_
+
+        Args:
+            y (_type_): _description_
+            lam (_type_, optional): _description_. Defaults to 10e7.
+            p (float, optional): _description_. Defaults to 0.05.
+            niter (int, optional): _description_. Defaults to 100.
+
+        Returns:
+            _type_: _description_
+        """
         L = len(y)
         D = sparse.diags([1, -2, 1], [0, -1, -2], shape=(L, L - 2))
         D = lam * D.dot(D.transpose())  # Precompute this term since it does not depend on `w`
@@ -183,6 +197,16 @@ class fiberPhotometryCurve:
 
     @staticmethod
     def _fit_regression(endog, exog, summary=False):
+        """_summary_
+
+        Args:
+            endog (_type_): _description_
+            exog (_type_): _description_
+            summary (bool, optional): _description_. Defaults to False.
+
+        Returns:
+            _type_: _description_
+        """
         model = sm.OLS(endog, sm.add_constant(exog)).fit()
         if summary:
             print(model.summary())
@@ -190,6 +214,14 @@ class fiberPhotometryCurve:
 
     @staticmethod
     def _kalman_filter(signal):
+        """_summary_
+
+        Args:
+            signal (_type_): _description_
+
+        Returns:
+            _type_: _description_
+        """
         ar_model = sm.tsa.ARIMA(signal, order=(3, 0, 0), trend='n').fit()
         A = np.zeros((3, 3))
         A[:, 0] = ar_model.params[:-1]
@@ -219,6 +251,8 @@ class fiberPhotometryCurve:
         return smooth_signal
 
     def _process_data(self):
+        """_summary_
+        """
         if self.raw_signal is None:
             self._extract_data()
 
@@ -265,16 +299,36 @@ class fiberPhotometryCurve:
         self.dfz_signals = dfz_signal
 
     def process_behavioral_data(self):
+        """_summary_
+        """
         self.anymaze_results = anymazeResults(self.anymaze_file)
         self.dlc_results = dlcResults(self.dlc_file)
         return
 
     @staticmethod
     def calc_area(l_index, r_index, timeseries):
+        """_summary_
+
+        Args:
+            l_index (_type_): _description_
+            r_index (_type_): _description_
+            timeseries (_type_): _description_
+
+        Returns:
+            _type_: _description_
+        """
         areas = np.asarray([simpson(timeseries[i:j]) for i, j in zip(l_index, r_index)])
         return areas
 
     def find_signal(self, neg=False):
+        """_summary_
+
+        Args:
+            neg (bool, optional): _description_. Defaults to False.
+
+        Returns:
+            _type_: _description_
+        """
         region_peak_properties = {}
         if not neg:
             for region, sig in self.dff_signals.items():
@@ -409,7 +463,7 @@ class FiberPhotometryCollection:
             if arg.ID is None:
                 i = len(self.curves.values())
                 print(
-                    f"No name supplied for this curve. Defaulting to 'Curve {i}' as the name. Consider updating this "
+                    f"No name supplied for this curve. Defaulting to 'Curve {i}' as the name. Consider updating this"
                     f"name.")
                 self.curves.update({f"Curve {i}": arg})
             else:
@@ -430,21 +484,19 @@ class FiberPhotometryCollection:
         Returns:
             peak_dict (dict): dictionary that maps each curve to its peak properties e.g. AUC, fwhm, etc.
         """
+        id = [k for k in self.curves]
         if pos:
-            id = [k for k in self.curves]
             peak_times = [v.Timestamps[region][v.region_peak_properties[region]['peaks']] for v in self.curves.values()]
             peak_heights = [v.region_peak_properties[region]['peak_heights'] for v in self.curves.values()]
             auc = [v.region_peak_properties[region]["areas_under_curve"] for v in self.curves.values()]
             fwhm = [v.region_peak_properties[region]["widths"] for v in self.curves.values()]
-            peak_dict = {"ID": id, "Peak_Times": peak_times, "Amplitudes": peak_heights, "AUC": auc, "FWHM": fwhm}
         else:
-            id = [k for k in self.curves]
             peak_times = [v.Timestamps[region][v.neg_region_peak_properties[region]['peaks']] for v in
                           self.curves.values()]
             peak_heights = [-v.neg_region_peak_properties[region]['peak_heights'] for v in self.curves.values()]
             auc = [v.neg_region_peak_properties[region]["areas_under_curve"] for v in self.curves.values()]
             fwhm = [v.neg_region_peak_properties[region]["widths"] for v in self.curves.values()]
-            peak_dict = {"ID": id, "Peak_Times": peak_times, "Amplitudes": peak_heights, "AUC": auc, "FWHM": fwhm}
+        peak_dict = {"ID": id, "Peak_Times": peak_times, "Amplitudes": peak_heights, "AUC": auc, "FWHM": fwhm}
         return peak_dict
 
     def histogram_2d(self, region):
@@ -473,7 +525,7 @@ class FiberPhotometryCollection:
 
         data: 2D numpy array, rows represent samples and columns represent time points.
         num_samples: Number of bootstrap samples.
-        alpha: Confidence level.
+        cl: Confidence level.
 
         Returns a 2D numpy array containing the lower and upper bound of the confidence interval for each timepoint.
         """
@@ -496,6 +548,15 @@ class FiberPhotometryCollection:
 
     @staticmethod
     def tci(array, cl=0.95):
+        """_summary_
+
+        Args:
+            array (_type_): _description_
+            cl (float, optional): _description_. Defaults to 0.95.
+
+        Returns:
+            _type_: _description_
+        """
         n = array.shape[0]
         crit_t = scipy.stats.t.ppf(cl, df=n - 1)
         c_int = np.zeros(shape=(2, array.shape[1]))
@@ -503,18 +564,80 @@ class FiberPhotometryCollection:
         c_int[1, :] = np.mean(array, axis=0) + (crit_t * scipy.stats.sem(array, axis=0))
         return c_int
 
-    def plot_whole_eta(self, task, treatment, region, ci='tci'):
+    def plot_whole_eta(self, task, treatment, region, ci='tci', sig_duration=8):
+
+        # create array of curves
         curves = self.curve_array(task, treatment, region)
+
+        # choose t-confidence interval or bootstrapped
         if ci == 'tci':
             c_int = self.tci(curves)
         elif ci == 'bci':
             c_int = self.bci(curves, num_samples=1000)
         else:
-            ValueError()
+            raise ValueError("Confidence interval options are 'tci' or 'bci'")
+        
+        # find where there is deflections from baseline
+        deflections = c_int[0, :] > 0
 
+        # create a sliding windor for convolution, used here to detect the sliding threshold
+        window = np.ones(sig_duration)
+
+        # convolve with boolean array
+        true_deflects = np.convolve(deflections, window, 'valid')
+
+        # find start indices where convolution equals to significant_duration
+        start_indices = np.where(true_deflects == sig_duration)[0]
+
+
+        # create figure
         fig, axs = plt.subplots()
         axs.plot(np.average(curves, axis=0))
         axs.fill_between(range(c_int.shape[1]), c_int[0, :], c_int[1, :], alpha=0.3)
+        # plot the significant deflections
+        y_height = axs.get_ylim()[1] * 0.97
+        for start_index in start_indices:
+            end_index = start_index + sig_duration
+            axs.hlines(y=y_height, xmin=start_index, xmax=end_index, colors='r')
+        return fig, axs
+    
+    def multi_event_eta(self, task, treatment, region,  events=None, window=3, ci='tci', sig_duration=8):
+        
+        # window in seconds times 30 indices per second and half the window period to visualize before
+        number_of_indices = window*1.5*30
+
+        # determine if we need timestamps for green or red indicator
+        if "G" in region:
+            time_idx = "2"
+        else:
+            time_idx = "4"
+
+        ###TODO: Gonna need some if-else logic here or something to determind what the length of the events list is ###
+        curves = self[task, treatment]
+        across_eta_ = np.zeros((len(curves), int(number_of_indices)))
+        for j, curve in enumerate(curves):
+            within_eta_ = np.zeros((len(events[j]), int(number_of_indices)))
+            interp = scipy.interpolate.interp1d(curve.Timestamps[time_idx], curve[region], kind='cubic')
+            for i, event in enumerate(events[j]):
+                time_period = np.linspace(event-(window/2), event+window, int(number_of_indices))
+                within_eta_[i] = interp(time_period)
+            across_eta_[j] = np.average(within_eta_, axis=0)
+
+        average_trace = np.average(across_eta_, axis=0)
+        # choose t-confidence interval or bootstrapped
+        if ci == 'tci':
+            c_int = self.tci(across_eta_)
+        elif ci == 'bci':
+            c_int = self.bci(across_eta_, num_samples=1000)
+        else:
+            raise ValueError("Confidence interval options are 'tci' or 'bci'")
+        
+        # make a figure
+        fig, axs = plt.subplots()
+        time = np.linspace(window/2, window, number_of_indices)
+        axs.plot(time, average_trace)
+        axs.fill_between(time, c_int[0, :], c_int[0, :], alpha=0.3)
+
         return fig, axs
 
     def event_summaries(self, region):
