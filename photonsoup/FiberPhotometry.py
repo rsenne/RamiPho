@@ -12,8 +12,8 @@ from scipy.integrate import simpson
 from scipy.ndimage import uniform_filter1d
 from scipy.signal import find_peaks
 from scipy.sparse.linalg import spsolve
-from FiberPho.anymaze_analysis import anymazeResults
-from FiberPho.dlc_analysis import dlcResults
+from photonsoup.anymaze_analysis import anymazeResults
+from photonsoup.dlc_analysis import dlcResults
 import pykalman
 
 __all__ = ["fiberPhotometryCurve", "FiberPhotometryCollection"]
