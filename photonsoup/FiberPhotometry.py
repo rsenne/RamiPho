@@ -15,6 +15,7 @@ from scipy.sparse.linalg import spsolve
 from photonsoup.anymaze_analysis import anymazeResults
 from photonsoup.dlc_analysis import dlcResults
 import pykalman
+from joblib import Parallel, delayed
 
 __all__ = ["fiberPhotometryCurve", "FiberPhotometryCollection"]
 
@@ -61,7 +62,7 @@ class fiberPhotometryCurve:
 
         # do preprocessing as part of initilization
         self._process_data()
-        self.region_region_peak_properties = self.find_signal()
+        self.region_peak_properties = self.find_signal()
 
     def __iter__(self):
         return iter(list(self.dff_signals.values()))
@@ -295,11 +296,18 @@ class fiberPhotometryCurve:
         self.dff_signals = dff_signal
         self.dfz_signals = dfz_signal
 
+        # return dff_signal, dfz_signal
+
     def process_behavioral_data(self):
         """_summary_
         """
+
+        # get freese vector and other fun goodies
         self.anymaze_results = anymazeResults(self.anymaze_file)
+        
+        # process dlc results for egetting kalman filter predictions
         self.dlc_results = dlcResults(self.dlc_file)
+        self.dlc_results.process_dlc(bparts=None, fps=self.fps)
         return
 
     @staticmethod
@@ -327,23 +335,15 @@ class fiberPhotometryCurve:
             _type_: _description_
         """
         region_peak_properties = {}
-        if not neg:
-            for region, sig in self.dff_signals.items():
-                peaks, properties = find_peaks(sig, height=np.std(sig), distance=131, width=25,
-                                               rel_height=0.5)
-                properties['peaks'] = peaks
-                properties['areas_under_curve'] = self.calc_area(properties['left_bases'], properties['right_bases'],
-                                                                 self.dff_signals[region])
-                properties['widths'] *= self._sample_time_
-                region_peak_properties[region] = properties
-        else:
-            for region, sig in self.dff_signals.items():
-                peaks, properties = find_peaks(-sig, height=np.std(sig), distance=131, width=25, rel_height=0.5)
-                properties['peaks'] = peaks
-                properties['areas_under_curve'] = self.calc_area(properties['left_bases'], properties['right_bases'],
-                                                                 self.dff_signals[region])
-                properties['widths'] *= self._sample_time_
-                region_peak_properties[region] = properties
+
+        for region, sig in self.dff_signals.items():
+            signal = -sig if neg else sig
+            peaks, properties = find_peaks(signal, height=np.std(sig), distance=131, width=25, rel_height=0.5)
+            properties['peaks'] = peaks
+            properties['areas_under_curve'] = self.calc_area(properties['left_bases'], properties['right_bases'], self.dff_signals[region])
+            properties['widths'] *= self._sample_time_
+            region_peak_properties[region] = properties
+
         return region_peak_properties
 
     def visual_check_peaks(self, signal):
@@ -352,22 +352,22 @@ class fiberPhotometryCurve:
         :param signal: string of which signal to check
         :return:
         """
-        if hasattr(self, "region_region_peak_properties"):
-            plt.figure()
+        if hasattr(self, "region_peak_properties"):
+            fig = plt.figure()
             plt.plot(self.dff_signals[signal])
-            plt.plot(self.region_region_peak_properties[signal]['peaks'],
-                     self.dff_signals[signal][self.region_region_peak_properties[signal]['peaks']], "x")
-            plt.vlines(x=self.region_region_peak_properties[signal]['peaks'],
-                       ymin=self.dff_signals[signal][self.region_region_peak_properties[signal]['peaks']] -
-                            self.region_region_peak_properties[signal]["prominences"],
-                       ymax=self.dff_signals[signal][self.region_region_peak_properties[signal]['peaks']], color="C1")
-            plt.hlines(y=self.region_region_peak_properties[signal]["width_heights"],
-                       xmin=self.region_region_peak_properties[signal]["left_ips"],
-                       xmax=self.region_region_peak_properties[signal]["right_ips"], color="C1")
+            plt.plot(self.region_peak_properties[signal]['peaks'],
+                     self.dff_signals[signal][self.region_peak_properties[signal]['peaks']], "x")
+            plt.vlines(x=self.region_peak_properties[signal]['peaks'],
+                       ymin=self.dff_signals[signal][self.region_peak_properties[signal]['peaks']] -
+                            self.region_peak_properties[signal]["prominences"],
+                       ymax=self.dff_signals[signal][self.region_peak_properties[signal]['peaks']], color="C1")
+            plt.hlines(y=self.region_peak_properties[signal]["width_heights"],
+                       xmin=self.region_peak_properties[signal]["left_ips"],
+                       xmax=self.region_peak_properties[signal]["right_ips"], color="C1")
             plt.show()
         else:
             raise KeyError(f'{signal} is not in {self}')
-        return
+        return fig
 
 
 class FiberPhotometryCollection:
@@ -412,28 +412,44 @@ class FiberPhotometryCollection:
         for i, curve in enumerate(curves):
             curve_array[i] = curve.dfz_signals[region][:min_len]
         return curve_array
+    
+    # def batch_data(self):
+    #     # results is now a list of tuples (dff_signal, dfz_signal)
+    #     results = Parallel(n_jobs=-1)(delayed(curve._process_data)() for curve in self.curves.values())
 
+    #     # Update each curve object with the returned results
+    #     for curve, (dff_signal, dfz_signal) in zip(self.curves.values(), results):
+    #         curve.dff_signals = dff_signal
+    #         curve.dfz_signals = dfz_signal
+    
     def peak_dict(self, region, pos=True):
-        """Used to create a dictionary that maps each individual curve ID to its event attributes. The absic idea being this will be apssed to a later function for a well formatted df.
+        """Used to create a dictionary that maps each individual curve ID to its event attributes.
         Args:
             region (str, optional): Which region peak properties to look at.
+            pos (bool, optional): Indicate if we are looking for positive peaks. Defaults to True.
         Returns:
             peak_dict (dict): dictionary that maps each curve to its peak properties e.g. AUC, fwhm, etc.
         """
-        id = [k for k in self.curves]
-        if pos:
-            peak_times = [v.Timestamps[region][v.region_peak_properties[region]['peaks']] for v in self.curves.values()]
-            peak_heights = [v.region_peak_properties[region]['peak_heights'] for v in self.curves.values()]
-            auc = [v.region_peak_properties[region]["areas_under_curve"] for v in self.curves.values()]
-            fwhm = [v.region_peak_properties[region]["widths"] for v in self.curves.values()]
-        else:
-            peak_times = [v.Timestamps[region][v.neg_region_peak_properties[region]['peaks']] for v in
-                          self.curves.values()]
-            peak_heights = [-v.neg_region_peak_properties[region]['peak_heights'] for v in self.curves.values()]
-            auc = [v.neg_region_peak_properties[region]["areas_under_curve"] for v in self.curves.values()]
-            fwhm = [v.neg_region_peak_properties[region]["widths"] for v in self.curves.values()]
-        peak_dict = {"ID": id, "Peak_Times": peak_times, "Amplitudes": peak_heights, "AUC": auc, "FWHM": fwhm}
-        return peak_dict
+        ids = list(self.curves.keys())
+        ts_id = "2" if "G" in region else "4"
+        peak_properties_key = 'region_peak_properties' if pos else 'neg_region_peak_properties'
+
+        peak_dicts = []
+        for v in self.curves.values():
+            peak_properties = v[peak_properties_key][region]
+            peak_time = v.Timestamps[ts_id][peak_properties['peaks']]
+            peak_height = peak_properties['peak_heights'] if pos else -peak_properties['peak_heights']
+            auc = peak_properties["areas_under_curve"]
+            fwhm = peak_properties["widths"]
+
+            peak_dicts.append({
+                "Peak_Times": peak_time,
+                "Amplitudes": peak_height,
+                "AUC": auc,
+                "FWHM": fwhm
+            })
+
+        return {"ID": ids, **zip(*peak_dicts)}
 
     def histogram_2d(self, region):
         """Plots a 2D event histogram where Y=Amplitudes and X=FWHM. The idea is to see if there is an easily defined
@@ -498,6 +514,22 @@ class FiberPhotometryCollection:
         c_int[0, :] = np.mean(array, axis=0) - (crit_t * scipy.stats.sem(array, axis=0))
         c_int[1, :] = np.mean(array, axis=0) + (crit_t * scipy.stats.sem(array, axis=0))
         return c_int
+    
+    @staticmethod
+    def eta_significance(ci, sig_duration):
+
+        # find deflections from baseline
+        deflections = ci > 0
+        
+        # create a sliding window for convolution
+        window = np.ones(sig_duration)
+
+        # convolve with boolean array
+        true_deflects = np.convolve(deflections, window, 'valid')
+
+        # find start indices where convolution equals to significant_duration
+        start_indices = np.where(true_deflects == sig_duration)[0]
+        return start_indices
 
     def plot_whole_eta(self, task, treatment, region, ci='tci', sig_duration=8):
 
@@ -511,19 +543,9 @@ class FiberPhotometryCollection:
             c_int = self.bci(curves, num_samples=1000)
         else:
             raise ValueError("Confidence interval options are 'tci' or 'bci'")
-        
-        # find where there is deflections from baseline
-        deflections = c_int[0, :] > 0
 
-        # create a sliding windor for convolution, used here to detect the sliding threshold
-        window = np.ones(sig_duration)
-
-        # convolve with boolean array
-        true_deflects = np.convolve(deflections, window, 'valid')
-
-        # find start indices where convolution equals to significant_duration
-        start_indices = np.where(true_deflects == sig_duration)[0]
-
+        # find significant indices
+        start_indices = self.eta_significance(c_int[0, :], sig_duration=8)
 
         # create figure
         fig, axs = plt.subplots()
@@ -571,12 +593,21 @@ class FiberPhotometryCollection:
             c_int = self.bci(across_eta_, num_samples=1000)
         else:
             raise ValueError("Confidence interval options are 'tci' or 'bci'")
+        
+        # find significant indices
+        start_indices = self.eta_significance(c_int[0, :], sig_duration=8)
     
         # make a figure
         fig, axs = plt.subplots()
         time = np.linspace(-window/2, window, number_of_indices)
         axs.plot(time, average_trace)
         axs.fill_between(time, c_int[0, :], c_int[1, :], alpha=0.3)
+
+        # plot the significant deflections
+        y_height = axs.get_ylim()[1] * 0.97
+        for start_index in start_indices:
+            end_index = start_index + sig_duration
+            axs.hlines(y=y_height, xmin=time[start_index], xmax=time[end_index], colors='r')
 
         return fig, axs, across_eta_
 

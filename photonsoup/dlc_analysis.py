@@ -87,3 +87,8 @@ class dlcResults:
             df = pd.DataFrame.from_dict(reformed_dict)
             self.filtered_df = df
             return df
+    
+    def process_dlc(self, bparts, fps):
+         self.calculate_centroids(bparts=bparts)
+         self.filter_predictions(bparts=bparts, fps=fps)
+
