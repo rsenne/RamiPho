@@ -21,8 +21,16 @@ __all__ = ["fiberPhotometryCurve", "FiberPhotometryCollection"]
 
 
 class fiberPhotometryCurve:
-    def __init__(self, npm_file: str, dlc_file: str = None, offset: float = None, anymaze_file: str = None,
-                 regress: bool = True, ID: str = None, task: str = None, treatment: str = None, smoother='kalman',
+    def __init__(self,
+                 npm_file: str,
+                 dlc_file: str = None,
+                 offset: float = None,
+                 anymaze_file: str = None,
+                 regress: bool = True,
+                 ID: str = None,
+                 task: str = None,
+                 treatment: str = None,
+                 smoother='kalman',
                  batch=True):
         """
         """
@@ -302,10 +310,16 @@ class fiberPhotometryCurve:
         """_summary_
         """
 
-        # get freese vector and other fun goodies
+        # get freeze vector and other fun goodies
         self.anymaze_results = anymazeResults(self.anymaze_file)
+        self.anymaze_results.correct_time_warp(self.__TN__)
+        self.anymaze_results.calculate_binned_freezing()
+        if "2" in self.Timestamps.keys():
+            self.anymaze_results.create_freeze_vector(self.Timestamps["2"])
+        else:
+            self.anymaze_results.create_freeze_vector(self.Timestamps["4"])
 
-        # process dlc results for egetting kalman filter predictions
+        # process dlc results for getting kalman filter predictions
         self.dlc_results = dlcResults(self.dlc_file)
         self.dlc_results.process_dlc(bparts=None, fps=self.fps)
         return
@@ -346,9 +360,11 @@ class fiberPhotometryCurve:
 
         for region, sig in self.dff_signals.items():
             signal = -sig if neg else sig
-            peaks, properties = find_peaks(signal, height=np.std(signal), prominence=2*np.std(signal), width=(7, 150), rel_height=0.5)
+            peaks, properties = find_peaks(signal, height=np.std(signal), prominence=2 * np.std(signal), width=(7, 150),
+                                           rel_height=0.5)
             properties['peaks'] = peaks
-            properties['areas_under_curve'] = self.calc_area([int(x) for x in properties['left_ips']], [int(x) for x in properties['right_ips']],
+            properties['areas_under_curve'] = self.calc_area([int(x) for x in properties['left_ips']],
+                                                             [int(x) for x in properties['right_ips']],
                                                              self.dff_signals[region])
             properties['widths'] *= self._sample_time_
             region_peak_properties[region] = properties

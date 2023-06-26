@@ -60,8 +60,8 @@ class anymazeResults:
         timestamps = pd.to_datetime(timestamps, format=time_format)
         binary_vector = np.zeros(len(timestamps), dtype=int)
         for i, ts in enumerate(timestamps):
-            state = self.anymaze_df.loc[self.anymaze_df[time_col] <= ts, behavior_col].iloc[
-                -1]  # Get the last label before the current timestamp
+            state = self.anymaze_df.loc[self.anymaze_df[time_col] <= ts, behavior_col].iloc[-1]
+            # Get the last label before the current timestamp
             binary_vector[i] = state
         self.freeze_vector = binary_vector
         return binary_vector
