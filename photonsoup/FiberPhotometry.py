@@ -22,7 +22,8 @@ __all__ = ["fiberPhotometryCurve", "FiberPhotometryCollection"]
 
 class fiberPhotometryCurve:
     def __init__(self, npm_file: str, dlc_file: str = None, offset: float = None, anymaze_file: str = None,
-                 regress: bool = True, ID: str = None, task: str = None, treatment: str = None, smoother='kalman'):
+                 regress: bool = True, ID: str = None, task: str = None, treatment: str = None, smoother='kalman',
+                 batch=True):
         """
         """
         # these should always be present
@@ -38,10 +39,11 @@ class fiberPhotometryCurve:
         self.dlc_file = dlc_file
         self.regress = regress
         self.smoother = smoother
-        self.raw_signal = None
-        self.timestamps = None
+        self.batch = batch
         self.dff_signals = None
         self.dfz_signals = None
+        self.raw_signal = None
+        self.timestamps = None
         self.anymaze_results = None
         self.dlc_results = None
         self.interp = None
@@ -55,14 +57,14 @@ class fiberPhotometryCurve:
         self._sample_time_ = np.diff(self.fp_df['Timestamp'])[1]
         self.fps = 1 / self._sample_time_
 
-        # check to see if using old files
-        if "Flags" in self.fp_df.columns:
-            self.fix_npm_flags()
-            print("Old NPM format detected, changing Flags to LedState")
+        # extract data, needs to be done sso that batching can be done
+        self._extract_data()
 
         # do preprocessing as part of initilization
-        self._process_data()
-        self.region_peak_properties = self.find_signal()
+        if not batch:
+            self.dff_signals, self.dfz_signals = self._process_data()
+            self.region_peak_properties = self.find_signal()
+            self.neg_region_peak_properties = self.find_signal(neg=True)
 
     def __iter__(self):
         return iter(list(self.dff_signals.values()))
@@ -121,11 +123,12 @@ class fiberPhotometryCurve:
                 isobestic_data[column] = self.fp_df[self.fp_df['LedState'] == 1][column].reset_index(drop=True)
 
                 # Update the length of the shortest trace
-                shortest_trace_length = min(shortest_trace_length, len(region_data[column]), len(self.fp_df[self.fp_df['LedState'] == 1][column]))
+                shortest_trace_length = min(shortest_trace_length, len(region_data[column]),
+                                            len(self.fp_df[self.fp_df['LedState'] == 1][column]))
 
         for state in led_state:
             if not self.fp_df[self.fp_df['LedState'] == state].Timestamp.empty:
-                # Store the deinterleaved timestamps for the LEDState
+                # Store the de-interleaved timestamps for the LEDState
                 timestamps[str(state)] = self.fp_df[self.fp_df['LedState'] == state].Timestamp.reset_index(
                     drop=True) - temp_t0
 
@@ -293,10 +296,7 @@ class fiberPhotometryCurve:
             dff_signal[key] = region_timeseries_corrected
             dfz_signal[key] = region_timeseries_corrected_z
 
-        self.dff_signals = dff_signal
-        self.dfz_signals = dfz_signal
-
-        # return dff_signal, dfz_signal
+        return dff_signal, dfz_signal
 
     def process_behavioral_data(self):
         """_summary_
@@ -304,25 +304,33 @@ class fiberPhotometryCurve:
 
         # get freese vector and other fun goodies
         self.anymaze_results = anymazeResults(self.anymaze_file)
-        
+
         # process dlc results for egetting kalman filter predictions
         self.dlc_results = dlcResults(self.dlc_file)
         self.dlc_results.process_dlc(bparts=None, fps=self.fps)
         return
 
-    @staticmethod
-    def calc_area(l_index, r_index, timeseries):
-        """_summary_
+    def calc_area(self, l_index, r_index, timeseries):
+        """Calculates the area between the timeseries curve and the x-axis.
 
         Args:
-            l_index (_type_): _description_
-            r_index (_type_): _description_
-            timeseries (_type_): _description_
+            l_index (List[int]): List of left indices for the areas to calculate.
+            r_index (List[int]): List of right indices for the areas to calculate.
+            timeseries (List[float]): List of y values (height of the curve at each point).
 
         Returns:
-            _type_: _description_
+            List[float]: List of the areas calculated between each pair of indices.
         """
-        areas = np.asarray([simpson(timeseries[i:j]) for i, j in zip(l_index, r_index)])
+        areas = []
+        dt = self._sample_time_
+        for i, j in zip(l_index, r_index):
+            if (timeseries[i:j + 1] < 0).any():
+                min_val = min(timeseries[i:j + 1])
+                area = simpson([val - min_val for val in timeseries[i:j + 1]], dx=dt)
+                areas.append(area)
+            else:
+                area = simpson([val for val in timeseries[i:j + 1]], dx=dt)
+                areas.append(area)
         return areas
 
     def find_signal(self, neg=False):
@@ -338,9 +346,10 @@ class fiberPhotometryCurve:
 
         for region, sig in self.dff_signals.items():
             signal = -sig if neg else sig
-            peaks, properties = find_peaks(signal, height=np.std(sig), distance=131, width=25, rel_height=0.5)
+            peaks, properties = find_peaks(signal, height=np.std(signal), prominence=2*np.std(signal), width=(7, 150), rel_height=0.5)
             properties['peaks'] = peaks
-            properties['areas_under_curve'] = self.calc_area(properties['left_bases'], properties['right_bases'], self.dff_signals[region])
+            properties['areas_under_curve'] = self.calc_area([int(x) for x in properties['left_ips']], [int(x) for x in properties['right_ips']],
+                                                             self.dff_signals[region])
             properties['widths'] *= self._sample_time_
             region_peak_properties[region] = properties
 
@@ -412,16 +421,24 @@ class FiberPhotometryCollection:
         for i, curve in enumerate(curves):
             curve_array[i] = curve.dfz_signals[region][:min_len]
         return curve_array
-    
-    # def batch_data(self):
-    #     # results is now a list of tuples (dff_signal, dfz_signal)
-    #     results = Parallel(n_jobs=-1)(delayed(curve._process_data)() for curve in self.curves.values())
 
-    #     # Update each curve object with the returned results
-    #     for curve, (dff_signal, dfz_signal) in zip(self.curves.values(), results):
-    #         curve.dff_signals = dff_signal
-    #         curve.dfz_signals = dfz_signal
-    
+    def batch_data(self):
+        # results is now a list of tuples (dff_signal, dfz_signal)
+        results = Parallel(n_jobs=-1)(delayed(curve._process_data)() for curve in self.curves.values())
+
+        # Update each curve object with the returned results
+        for curve, (dff_signal, dfz_signal) in zip(self.curves.values(), results):
+            curve.dff_signals = dff_signal
+            curve.dfz_signals = dfz_signal
+
+        # now process signals
+        signal_props = Parallel(n_jobs=-1)(delayed(curve.find_signal)() for curve in self.curves.values())
+        neg_signal_props = Parallel(n_jobs=-1)(delayed(curve.find_signal)(neg=True) for curve in self.curves.values())
+
+        # update attr
+        for curve, props, neg_props in zip(self.curves.values(), signal_props, neg_signal_props):
+            curve.region_peak_properties, curve.neg_region_peak_properties = props, neg_props
+
     def peak_dict(self, region, pos=True):
         """Used to create a dictionary that maps each individual curve ID to its event attributes.
         Args:
@@ -436,7 +453,7 @@ class FiberPhotometryCollection:
 
         peak_dicts = []
         for v in self.curves.values():
-            peak_properties = v[peak_properties_key][region]
+            peak_properties = getattr(v, peak_properties_key)[region]
             peak_time = v.Timestamps[ts_id][peak_properties['peaks']]
             peak_height = peak_properties['peak_heights'] if pos else -peak_properties['peak_heights']
             auc = peak_properties["areas_under_curve"]
@@ -449,7 +466,19 @@ class FiberPhotometryCollection:
                 "FWHM": fwhm
             })
 
-        return {"ID": ids, **zip(*peak_dicts)}
+            # Check if peak_dicts is populated
+            if not peak_dicts:
+                print(f"No peak properties found for region {region} and pos {pos}")
+                return {}
+
+            # Check if keys in peak_dicts are as expected
+            expected_keys = {"Peak_Times", "Amplitudes", "AUC", "FWHM"}
+            if not expected_keys.issubset(set(peak_dicts[0].keys())):
+                print(f"Unexpected keys in peak properties: {peak_dicts[0].keys()}")
+                return {}
+
+        combined_dict = {k: [dic[k] for dic in peak_dicts] for k in peak_dicts[0]}
+        return {"ID": ids, **combined_dict}
 
     def histogram_2d(self, region):
         """Plots a 2D event histogram where Y=Amplitudes and X=FWHM. The idea is to see if there is an easily defined
@@ -493,8 +522,8 @@ class FiberPhotometryCollection:
             bootstrap_array[:, i] = data[rints, i]
 
         sig = 1 - cl
-        ci[0, :] = np.percentile(bootstrap_array, q=(sig / 2)*100, axis=0)
-        ci[1, :] = np.percentile(bootstrap_array, q=(1-(sig / 2))*100, axis=0)
+        ci[0, :] = np.percentile(bootstrap_array, q=(sig / 2) * 100, axis=0)
+        ci[1, :] = np.percentile(bootstrap_array, q=(1 - (sig / 2)) * 100, axis=0)
         return ci
 
     @staticmethod
@@ -514,13 +543,13 @@ class FiberPhotometryCollection:
         c_int[0, :] = np.mean(array, axis=0) - (crit_t * scipy.stats.sem(array, axis=0))
         c_int[1, :] = np.mean(array, axis=0) + (crit_t * scipy.stats.sem(array, axis=0))
         return c_int
-    
+
     @staticmethod
     def eta_significance(ci, sig_duration):
 
         # find deflections from baseline
         deflections = ci > 0
-        
+
         # create a sliding window for convolution
         window = np.ones(sig_duration)
 
@@ -557,11 +586,11 @@ class FiberPhotometryCollection:
             end_index = start_index + sig_duration
             axs.hlines(y=y_height, xmin=start_index, xmax=end_index, colors='r')
         return fig, axs
-    
-    def multi_event_eta(self, task, treatment, region,  events=None, window=3, ci='tci', sig_duration=8):
-        
+
+    def multi_event_eta(self, task, treatment, region, events=None, window=3, ci='tci', sig_duration=8):
+
         # window in seconds times 30 indices per second and half the window period to visualize before
-        number_of_indices = int(window*1.5*15)
+        number_of_indices = int(window * 1.5 * 15)
 
         # determine if we need timestamps for green or red indicator
         time_idx = "2" if "G" in region else "4"
@@ -570,7 +599,7 @@ class FiberPhotometryCollection:
             interp = scipy.interpolate.interp1d(curve.Timestamps[time_idx], curve[region], kind='cubic')
             within_eta_ = np.zeros((len(events_), number_of_indices))
             for i, event in enumerate(events_):
-                time_period = np.linspace(event-(window/2), event+window, number_of_indices)
+                time_period = np.linspace(event - (window / 2), event + window, number_of_indices)
                 within_eta_[i] = interp(time_period)
             return np.average(within_eta_, axis=0)
 
@@ -580,7 +609,7 @@ class FiberPhotometryCollection:
         # If there's only one event, repeat it for each curve
         if len(events) == 1:
             events = events * len(curves)
-        
+
         for j, curve in enumerate(curves):
             across_eta_[j] = event_interpolation(curve, events[j])
 
@@ -593,13 +622,13 @@ class FiberPhotometryCollection:
             c_int = self.bci(across_eta_, num_samples=1000)
         else:
             raise ValueError("Confidence interval options are 'tci' or 'bci'")
-        
+
         # find significant indices
         start_indices = self.eta_significance(c_int[0, :], sig_duration=8)
-    
+
         # make a figure
         fig, axs = plt.subplots()
-        time = np.linspace(-window/2, window, number_of_indices)
+        time = np.linspace(-window / 2, window, number_of_indices)
         axs.plot(time, average_trace)
         axs.fill_between(time, c_int[0, :], c_int[1, :], alpha=0.3)
 
@@ -622,6 +651,13 @@ class FiberPhotometryCollection:
         summary_dict = self.peak_dict(region)
         df = pd.DataFrame(summary_dict)
         df_transformed = df.apply(pd.Series.explode).reset_index(drop=True)
+
+        # a set of nasty one-liners that maps the curve task and treatment values to a new column in the dataframe
+        df_transformed.loc[:, 'task'] = df_transformed['ID'].map(self.curves).apply(
+            lambda x: x.task if x is not None else 'Unknown')
+        df_transformed.loc[:, 'treatment'] = df_transformed['ID'].map(self.curves).apply(
+            lambda x: x.treatment if x is not None else 'Unknown')
+
         return df_transformed
 
     def raster_plot(self, task, treatment, region, xtick_range=None, xtick_freq=None):
