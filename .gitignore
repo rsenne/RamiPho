@@ -149,3 +149,4 @@ FiberPho/vCA1_analysis.py
 ssm/
 .vscode/settings.json
 .DS_Store
+*.ipynb
