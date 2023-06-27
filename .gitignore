@@ -148,3 +148,4 @@ FiberPho/vCA1_analysis.py
 *.svg
 ssm/
 .vscode/settings.json
+.DS_Store
