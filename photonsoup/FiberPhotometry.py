@@ -17,10 +17,10 @@ from photonsoup.dlc_analysis import dlcResults
 import pykalman
 from joblib import Parallel, delayed
 
-__all__ = ["fiberPhotometryCurve", "FiberPhotometryCollection"]
+__all__ = ["FiberPhotometryCurve", "FiberPhotometryCollection"]
 
 
-class fiberPhotometryCurve:
+class FiberPhotometryCurve:
     def __init__(self,
                  npm_file: str,
                  dlc_file: str = None,
@@ -78,7 +78,7 @@ class fiberPhotometryCurve:
         return iter(list(self.dff_signals.values()))
 
     def __eq__(self, other):
-        if not isinstance(other, fiberPhotometryCurve):
+        if not isinstance(other, FiberPhotometryCurve):
             raise TypeError("You can only compare the identity of a fiber photometry curve to another fiber"
                             "photometry curve!!")
         val1 = self.dff_signals.values()
@@ -418,7 +418,7 @@ class FiberPhotometryCollection:
     def add_curve(self, *args):
         """add_curve: add a fiberPhotometryCUrve object to the collection for analysis.
             Args:
-                *args(fiberPhotometryCurve): fiberPhotometryCurves
+                *args(FiberPhotometryCurve): fiberPhotometryCurves
         """
         for arg in args:
             if arg.ID is None:
