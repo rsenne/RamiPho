@@ -1,5 +1,4 @@
-import pickle as pkl
-import warnings as warn
+import pickle
 import matplotlib.pyplot as plt
 import numba as nb
 import numpy as np
@@ -696,3 +695,25 @@ class FiberPhotometryCollection:
             ax.set_xticks(np.linspace(0, raster_array.shape[1], xtick_freq),
                           labels=np.linspace(0, xtick_range, xtick_freq, dtype=np.int))
         return fig, ax
+
+    def save(self, filename):
+        """Save the FiberPhotometryCollection object to a file.
+
+        Args:
+            filename (str): The name of the file to save the object to. Should include the .pkl extension.
+        """
+        with open(filename, 'wb') as f:
+            pickle.dump(self, f)
+
+    @staticmethod
+    def load(filename):
+        """Load a FiberPhotometryCollection object from a file.
+
+        Args:
+            filename (str): The name of the file to load the object from. Should include the .pkl extension.
+
+        Returns:
+            FiberPhotometryCollection: The loaded object.
+        """
+        with open(filename, 'rb') as f:
+            return pickle.load(f)
