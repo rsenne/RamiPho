@@ -470,7 +470,7 @@ class FiberPhotometryCollection:
         peak_dicts = []
         for v in self.curves.values():
             peak_properties = getattr(v, peak_properties_key)[region]
-            peak_time = v.Timestamps[ts_id][peak_properties['peaks']]
+            peak_time = v.Timestamps[ts_id][peak_properties['peaks']].to_numpy()
             peak_height = peak_properties['peak_heights'] if pos else -peak_properties['peak_heights']
             auc = peak_properties["areas_under_curve"]
             fwhm = peak_properties["widths"]
@@ -666,7 +666,7 @@ class FiberPhotometryCollection:
         """
         summary_dict = self.peak_dict(region)
         df = pd.DataFrame(summary_dict)
-        df_transformed = df.apply(pd.Series.explode).reset_index(drop=True)
+        df_transformed = df.set_index('ID').apply(pd.Series.explode).reset_index()
 
         # a set of nasty one-liners that maps the curve task and treatment values to a new column in the dataframe
         df_transformed.loc[:, 'task'] = df_transformed['ID'].map(self.curves).apply(
@@ -674,7 +674,7 @@ class FiberPhotometryCollection:
         df_transformed.loc[:, 'treatment'] = df_transformed['ID'].map(self.curves).apply(
             lambda x: x.treatment if x is not None else 'Unknown')
 
-        return df_transformed
+        return df_transformed.infer_objects()
 
     def raster_plot(self, task, treatment, region, xtick_range=None, xtick_freq=None):
         """Raster plot: Generate a raster plot of Z-scored fiber photometry traces.
