@@ -18,3 +18,5 @@ FiberPho/vCA1_analysis.py
 ssm/
 *.pyc
 .vscode/settings.json
+.DS_Store
+*.ipynb

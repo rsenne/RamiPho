@@ -469,7 +469,7 @@ class FiberPhotometryCollection:
         peak_dicts = []
         for v in self.curves.values():
             peak_properties = getattr(v, peak_properties_key)[region]
-            peak_time = v.Timestamps[ts_id][peak_properties['peaks']]
+            peak_time = v.Timestamps[ts_id][peak_properties['peaks']].to_numpy()
             peak_height = peak_properties['peak_heights'] if pos else -peak_properties['peak_heights']
             auc = peak_properties["areas_under_curve"]
             fwhm = peak_properties["widths"]
@@ -602,8 +602,7 @@ class FiberPhotometryCollection:
             axs.hlines(y=y_height, xmin=start_index, xmax=end_index, colors='r')
         return fig, axs
 
-    def multi_event_eta(self, task, treatment, region, events=None, window=3, ci='tci', sig_duration=8):
-
+    def multi_event_eta(self, task, treatment, region, events=None, window=3, ci='tci', sig_duration=8, axs=None):
         # window in seconds times 30 indices per second and half the window period to visualize before
         number_of_indices = int(window * 1.5 * 15)
 
@@ -639,10 +638,11 @@ class FiberPhotometryCollection:
             raise ValueError("Confidence interval options are 'tci' or 'bci'")
 
         # find significant indices
-        start_indices = self.eta_significance(c_int[0, :], sig_duration=8)
+        start_indices = self.eta_significance(c_int[0, :], sig_duration=8) # change to be dependent on the sampling rate
 
         # make a figure
-        fig, axs = plt.subplots()
+        if axs is None:
+            fig, axs = plt.subplots()
         time = np.linspace(-window / 2, window, number_of_indices)
         axs.plot(time, average_trace)
         axs.fill_between(time, c_int[0, :], c_int[1, :], alpha=0.3)
@@ -653,7 +653,10 @@ class FiberPhotometryCollection:
             end_index = start_index + sig_duration
             axs.hlines(y=y_height, xmin=time[start_index], xmax=time[end_index], colors='r')
 
-        return fig, axs, across_eta_
+        if axs is None:
+            return fig, axs, across_eta_
+        else:
+            return axs, across_eta_
 
     def event_summaries(self, region):
         """Creates a DataFrame that contains all the relevant event information e.g. AUC, FWHM, etc. This can be used
@@ -665,7 +668,7 @@ class FiberPhotometryCollection:
         """
         summary_dict = self.peak_dict(region)
         df = pd.DataFrame(summary_dict)
-        df_transformed = df.apply(pd.Series.explode).reset_index(drop=True)
+        df_transformed = df.set_index('ID').apply(pd.Series.explode).reset_index()
 
         # a set of nasty one-liners that maps the curve task and treatment values to a new column in the dataframe
         df_transformed.loc[:, 'task'] = df_transformed['ID'].map(self.curves).apply(
@@ -673,7 +676,7 @@ class FiberPhotometryCollection:
         df_transformed.loc[:, 'treatment'] = df_transformed['ID'].map(self.curves).apply(
             lambda x: x.treatment if x is not None else 'Unknown')
 
-        return df_transformed
+        return df_transformed.infer_objects()
 
     def raster_plot(self, task, treatment, region, xtick_range=None, xtick_freq=None):
         """Raster plot: Generate a raster plot of Z-scored fiber photometry traces.
