@@ -603,8 +603,7 @@ class FiberPhotometryCollection:
             axs.hlines(y=y_height, xmin=start_index, xmax=end_index, colors='r')
         return fig, axs
 
-    def multi_event_eta(self, task, treatment, region, events=None, window=3, ci='tci', sig_duration=8):
-
+    def multi_event_eta(self, task, treatment, region, events=None, window=3, ci='tci', sig_duration=8, axs=None):
         # window in seconds times 30 indices per second and half the window period to visualize before
         number_of_indices = int(window * 1.5 * 15)
 
@@ -640,10 +639,11 @@ class FiberPhotometryCollection:
             raise ValueError("Confidence interval options are 'tci' or 'bci'")
 
         # find significant indices
-        start_indices = self.eta_significance(c_int[0, :], sig_duration=8)
+        start_indices = self.eta_significance(c_int[0, :], sig_duration=8) # change to be dependent on the sampling rate
 
         # make a figure
-        fig, axs = plt.subplots()
+        if axs is None:
+            fig, axs = plt.subplots()
         time = np.linspace(-window / 2, window, number_of_indices)
         axs.plot(time, average_trace)
         axs.fill_between(time, c_int[0, :], c_int[1, :], alpha=0.3)
@@ -654,7 +654,10 @@ class FiberPhotometryCollection:
             end_index = start_index + sig_duration
             axs.hlines(y=y_height, xmin=time[start_index], xmax=time[end_index], colors='r')
 
-        return fig, axs, across_eta_
+        if axs is None:
+            return fig, axs, across_eta_
+        else:
+            return axs, across_eta_
 
     def event_summaries(self, region):
         """Creates a DataFrame that contains all the relevant event information e.g. AUC, FWHM, etc. This can be used
