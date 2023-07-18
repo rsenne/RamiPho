@@ -140,10 +140,14 @@ class FiberPhotometryCurve:
                     drop=True) - temp_t0
 
         # Trim the signals and timestamps to the length of the shortest trace
-        for column, led_state in zip(list(isobestic_data.keys()) + list(raw_signal.keys()), led_state):
+        for column in raw_signal.keys():
             raw_signal[column] = raw_signal[column][:shortest_trace_length]
+
+        for column in isobestic_data.keys():
             isobestic_data[column] = isobestic_data[column][:shortest_trace_length]
-            timestamps[str(led_state)] = timestamps[str(led_state)][:shortest_trace_length]
+
+        for state in led_state:
+            timestamps[str(state)] = timestamps[str(state)][:shortest_trace_length]
 
         self.raw_signal = raw_signal
         self.isobestic_channel = isobestic_data
@@ -575,7 +579,7 @@ class FiberPhotometryCollection:
         start_indices = np.where(true_deflects == sig_duration)[0]
         return start_indices
 
-    def plot_whole_eta(self, task, treatment, region, ci='tci', sig_duration=8):
+    def plot_whole_eta(self, task, treatment, region, ci='tci', sig_duration=8, ax=None, **kwargs):
 
         # create array of curves
         curves = self.curve_array(task, treatment, region)
@@ -592,17 +596,23 @@ class FiberPhotometryCollection:
         start_indices = self.eta_significance(c_int[0, :], sig_duration=8)
 
         # create figure
-        fig, axs = plt.subplots()
-        axs.plot(np.average(curves, axis=0))
-        axs.fill_between(range(c_int.shape[1]), c_int[0, :], c_int[1, :], alpha=0.3)
+        if ax is None:
+            fig, ax = plt.subplots()
+
+        ax.plot(np.average(curves, axis=0), **kwargs)
+        ax.fill_between(range(c_int.shape[1]), c_int[0, :], c_int[1, :], alpha=0.3)
         # plot the significant deflections
-        y_height = axs.get_ylim()[1] * 0.97
+        y_height = ax.get_ylim()[1] * 0.97
         for start_index in start_indices:
             end_index = start_index + sig_duration
-            axs.hlines(y=y_height, xmin=start_index, xmax=end_index, colors='r')
-        return fig, axs
+            ax.hlines(y=y_height, xmin=start_index, xmax=end_index, colors='r')
 
-    def multi_event_eta(self, task, treatment, region, events=None, window=3, ci='tci', sig_duration=8, axs=None):
+        if ax is None:
+            return fig, ax
+        else:
+            return ax
+
+    def multi_event_eta(self, task, treatment, region, events=None, window=3, ci='tci', sig_duration=8, ax=None, **kwargs):
         # window in seconds times 30 indices per second and half the window period to visualize before
         number_of_indices = int(window * 1.5 * 15)
 
@@ -641,22 +651,22 @@ class FiberPhotometryCollection:
         start_indices = self.eta_significance(c_int[0, :], sig_duration=8) # change to be dependent on the sampling rate
 
         # make a figure
-        if axs is None:
-            fig, axs = plt.subplots()
+        if ax is None:
+            fig, ax = plt.subplots()
         time = np.linspace(-window / 2, window, number_of_indices)
-        axs.plot(time, average_trace)
-        axs.fill_between(time, c_int[0, :], c_int[1, :], alpha=0.3)
+        ax.plot(time, average_trace, **kwargs)
+        ax.fill_between(time, c_int[0, :], c_int[1, :], alpha=0.3)
 
         # plot the significant deflections
-        y_height = axs.get_ylim()[1] * 0.97
+        y_height = ax.get_ylim()[1] * 0.97
         for start_index in start_indices:
             end_index = start_index + sig_duration
-            axs.hlines(y=y_height, xmin=time[start_index], xmax=time[end_index], colors='r')
+            ax.hlines(y=y_height, xmin=time[start_index], xmax=time[end_index], colors='r')
 
-        if axs is None:
-            return fig, axs, across_eta_
+        if ax is None:
+            return fig, ax, across_eta_
         else:
-            return axs, across_eta_
+            return ax, across_eta_
 
     def event_summaries(self, region):
         """Creates a DataFrame that contains all the relevant event information e.g. AUC, FWHM, etc. This can be used
