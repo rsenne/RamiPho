@@ -102,8 +102,11 @@ class FiberPhotometryCurve:
         isobestic_data = {}
         timestamps = {}
 
-        # led states
-        led_state = [1, 2, 4]
+        # Get the unique values in the "LedState" column
+        led_states_unique = self.fp_df['LedState'].unique()
+
+        # Filter out any invalid values (if present)
+        led_state = [state for state in led_states_unique if state in [1, 2, 4]]
 
         # Get the unique region columns
         region_columns = self.fp_df.columns[self.fp_df.columns.str.contains('Region')].tolist()
