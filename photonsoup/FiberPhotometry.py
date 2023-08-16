@@ -319,11 +319,12 @@ class FiberPhotometryCurve:
         # get freeze vector and other fun goodies
         self.anymaze_results = anymazeResults(self.anymaze_file)
         self.anymaze_results.correct_time_warp(self.__TN__)
-        self.anymaze_results.calculate_binned_freezing()
+        self.behavioral_data["percent_freezing"] = self.anymaze_results.calculate_binned_freezing()
+
         if "2" in self.Timestamps.keys():
-            self.anymaze_results.create_freeze_vector(self.Timestamps["2"])
+            self.behavioral_data["freeze_vector"] = self.anymaze_results.create_freeze_vector(self.Timestamps["2"])
         else:
-            self.anymaze_results.create_freeze_vector(self.Timestamps["4"])
+            self.behavioral_data["freeze_vector"] = self.anymaze_results.create_freeze_vector(self.Timestamps["4"])
 
         # process dlc results for getting kalman filter predictions
         self.dlc_results = dlcResults(self.dlc_file)
@@ -460,6 +461,7 @@ class FiberPhotometryCollection:
         # update attr
         for curve, props, neg_props in zip(self.curves.values(), signal_props, neg_signal_props):
             curve.region_peak_properties, curve.neg_region_peak_properties = props, neg_props
+
 
     def peak_dict(self, region, pos=True):
         """Used to create a dictionary that maps each individual curve ID to its event attributes.

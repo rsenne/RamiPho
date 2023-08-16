@@ -37,6 +37,5 @@ class bSpline:
                 for ind in left_inds[:-3]:
                     spl_map[i, ind:ind + np.shape(self.b)[0]] = self.b[:, i]
 
-
         spl_dict = {f"spline_var{i}": spl_map[i, :] for i in range(np.shape(spl_map)[0])}
         return spl_map, spl_dict
