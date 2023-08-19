@@ -27,14 +27,16 @@ class anymazeResults:
 
         return
 
+
     def calculate_binned_freezing(self,
-                                  bin_duration=120,
-                                  start=None, end=None,
-                                  offset=0,
-                                  time_col='Time',
-                                  behavior_col='Freezing'):
+                              bin_duration=120,
+                              start=None, end=None,
+                              offset=0,
+                              time_col='Time',
+                              behavior_col='Freezing'):
+    
         # Subtract the offset directly
-        self.anymaze_df[time_col] -= offset
+        self.anymaze_df[time_col] = self.anymaze_df[time_col].astype(float) - offset
 
         # Calculate the duration between rows
         self.anymaze_df['duration'] = self.anymaze_df[time_col].diff().fillna(0)
@@ -44,13 +46,22 @@ class anymazeResults:
         end = end if end is not None else self.anymaze_df[time_col].iloc[-1]
 
         bins = np.arange(start, end + bin_duration, bin_duration)  # create bins
-        self.anymaze_df['bin'] = pd.cut(self.anymaze_df[time_col], bins, right=False)
+        self.anymaze_df['bin'] = pd.cut(self.anymaze_df[time_col], bins, include_lowest=True, right=False)
 
-        result = self.anymaze_df.groupby(['bin', behavior_col])['duration'].sum().reset_index()
-        return result[result[behavior_col] == 1]
+        # Filter rows where the behavior is freezing (i.e., behavior_col is 1)
+        freezing_data = self.anymaze_df[self.anymaze_df[behavior_col] == 0]
+
+        # Group by the bins and sum the duration
+        freezing_durations = freezing_data.groupby('bin')['duration'].sum()
+
+        # Convert to percentages
+        freezing_percentages = (freezing_durations / bin_duration) * 100
+
+        return pd.DataFrame({'bin': freezing_durations.index, 'freezing_percentage': freezing_percentages}).reset_index(drop=True)
+
 
     def create_freeze_vector(self, timestamps, time_col='Time', behavior_col='Freezing'):
-        timestamps = [self.__convert_time_to_seconds__([ts])[0] for ts in timestamps]
+
         binary_vector = np.zeros(len(timestamps), dtype=int)
 
         for i, ts in enumerate(timestamps):

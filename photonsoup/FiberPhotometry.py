@@ -36,8 +36,8 @@ class FiberPhotometryCurve:
         # these should always be present
         self.npm_file = npm_file
         self.fp_df = pd.read_csv(self.npm_file)
-        self.__T0__ = self.fp_df.loc[1, 'Timestamp']
-        self.__TN__ = self.fp_df.Timestamp.iloc[-1]
+        self.__T0__ = self.fp_df.loc[0, 'Timestamp']
+        self.__TN__ = self.fp_df.Timestamp.iloc[-1] - self.__T0__
         self.behavioral_data = {}
         self.ID = ID
         self.task = task
