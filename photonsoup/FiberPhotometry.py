@@ -64,7 +64,7 @@ class FiberPhotometryCurve:
         self._sample_time_ = np.diff(self.fp_df['Timestamp'])[1]
         self.fps = 1 / self._sample_time_
 
-        # extract data, needs to be done sso that batching can be done
+        # extract data, needs to be done so that batching can be done
         self._extract_data()
 
         # do preprocessing as part of initilization
