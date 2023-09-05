@@ -326,6 +326,8 @@ class FiberPhotometryCurve:
         else:
             self.behavioral_data["freeze_vector"] = self.anymaze_results.create_freeze_vector(self.Timestamps["4"])
 
+        freeze_onset, freeze_offset = self.anymaze_results.find_onset_offset()
+
         # process dlc results for getting kalman filter predictions
         self.dlc_results = dlcResults(self.dlc_file)
         self.dlc_results.process_dlc(bparts=None, fps=self.fps)

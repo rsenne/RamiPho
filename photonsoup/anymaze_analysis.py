@@ -9,6 +9,8 @@ class anymazeResults:
         # Convert the Time column to seconds immediately upon reading
         self.anymaze_df['Time'] = self.__convert_time_to_seconds__(self.anymaze_df['Time'])
         self.freeze_vector = None
+        self.freezing_onsets = None
+        self.freezing_offsets = None
 
     def __convert_time_to_seconds__(self, time_series):
         # Split the time and then convert to seconds
@@ -70,4 +72,19 @@ class anymazeResults:
 
         self.freeze_vector = binary_vector
         return binary_vector
+
+
+    def find_onset_offset(self):
+        # grab freeze vector
+        vector = self.freeze_vector
+        # Calculate differences
+        diff = np.diff(np.insert(np.append(vector, 0), 0, 0))# Calculate differences
+        # find offsets and offsets, difference of -1 indicates onset, 1 indicates offset
+        onsets = np.where(diff == -1)[0] - 1  # subtracting 1 to get the correct index
+        offsets = np.where(diff == 1)[0] - 1  # subtracting 1 to get the correct index
+        self.freezing_onsets = list(onsets)
+        self.free_offsets = list(offsets)
+        return list(onsets), list(offsets)
+
+            
 
