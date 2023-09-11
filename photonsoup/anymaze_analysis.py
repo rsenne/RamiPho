@@ -3,6 +3,7 @@ import numpy as np
 
 __all__ = ["anymazeResults"]
 
+
 class anymazeResults:
     def __init__(self, filepath: str):
         self.anymaze_df = pd.read_csv(filepath)
@@ -29,14 +30,12 @@ class anymazeResults:
 
         return
 
-
     def calculate_binned_freezing(self,
-                              bin_duration=120,
-                              start=None, end=None,
-                              offset=0,
-                              time_col='Time',
-                              behavior_col='Freezing'):
-    
+                                  bin_duration=120,
+                                  start=None, end=None,
+                                  offset=0,
+                                  time_col='Time',
+                                  behavior_col='Freezing'):
         # Subtract the offset directly
         self.anymaze_df[time_col] = self.anymaze_df[time_col].astype(float) - offset
 
@@ -59,11 +58,10 @@ class anymazeResults:
         # Convert to percentages
         freezing_percentages = (freezing_durations / bin_duration) * 100
 
-        return pd.DataFrame({'bin': freezing_durations.index, 'freezing_percentage': freezing_percentages}).reset_index(drop=True)
-
+        return pd.DataFrame({'bin': freezing_durations.index, 'freezing_percentage': freezing_percentages}).reset_index(
+            drop=True)
 
     def create_freeze_vector(self, timestamps, time_col='Time', behavior_col='Freezing'):
-
         binary_vector = np.zeros(len(timestamps), dtype=int)
 
         for i, ts in enumerate(timestamps):
@@ -73,18 +71,14 @@ class anymazeResults:
         self.freeze_vector = binary_vector
         return binary_vector
 
-
     def find_onset_offset(self):
         # grab freeze vector
         vector = self.freeze_vector
         # Calculate differences
-        diff = np.diff(np.insert(np.append(vector, 0), 0, 0))# Calculate differences
+        diff = np.diff(np.insert(np.append(vector, 0), 0, 0))  # Calculate differences
         # find offsets and offsets, difference of -1 indicates onset, 1 indicates offset
         onsets = np.where(diff == -1)[0] - 1  # subtracting 1 to get the correct index
         offsets = np.where(diff == 1)[0] - 1  # subtracting 1 to get the correct index
         self.freezing_onsets = list(onsets)
-        self.free_offsets = list(offsets)
+        self.freezing_offsets = list(offsets)
         return list(onsets), list(offsets)
-
-            
-

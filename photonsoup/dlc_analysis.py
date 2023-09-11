@@ -10,7 +10,7 @@ class dlcResults:
         self.dlc_df = pd.read_csv(dlc_file, header=[1, 2], index_col=[0])
         self.filtered_df = None
 
-    def kalman_filter(self, x_data, y_data, dt=1):
+    def kalman_filter(self, x_data, y_data, dt=(1/30)):
         A = np.array([
             [1, 0, dt, 0],
             [0, 1, 0, dt],

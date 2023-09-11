@@ -333,6 +333,23 @@ class FiberPhotometryCurve:
         self.dlc_results.process_dlc(bparts=None, fps=self.fps)
         return
 
+    def _process_behavioral_data_batch(self, bin_duration=60, start=None, end=None):
+        anymaze_results = anymazeResults(self.anymaze_file)
+        anymaze_results.correct_time_warp(self.__TN__)
+        percent_freezing = anymaze_results.calculate_binned_freezing(bin_duration=bin_duration, start=start, end=end, offset=self.offset)
+        if "2" in self.Timestamps.keys():
+            freeze_vector = anymaze_results.create_freeze_vector(self.Timestamps["2"])
+        else:
+            freeze_vector = anymaze_results.create_freeze_vector(self.Timestamps["4"])
+
+        freeze_onset, freeze_offset = anymaze_results.find_onset_offset()
+
+        # process dlc results for getting kalman filter predictions
+        dlc_results = dlcResults(self.dlc_file)
+        dlc_results.process_dlc(bparts=None, fps=self.fps)
+
+        return anymaze_results, percent_freezing, freeze_vector, freeze_onset, freeze_offset, dlc_results
+
     def calc_area(self, l_index, r_index, timeseries):
         """Calculates the area between the timeseries curve and the x-axis.
 
@@ -425,7 +442,7 @@ class FiberPhotometryCollection:
         return filtered_curves
 
     def add_curve(self, *args):
-        """add_curve: add a fiberPhotometryCUrve object to the collection for analysis.
+        """add_curve: add a fiberPhotometryCurve object to the collection for analysis.
             Args:
                 *args(FiberPhotometryCurve): fiberPhotometryCurves
         """
@@ -464,6 +481,22 @@ class FiberPhotometryCollection:
         for curve, props, neg_props in zip(self.curves.values(), signal_props, neg_signal_props):
             curve.region_peak_properties, curve.neg_region_peak_properties = props, neg_props
 
+    def batch_behavior(self):
+        # results in a complex tuple, refer to function in curve class for reference
+        results = Parallel(n_jobs=-1)(delayed(curve._process_behavioral_data_batch)() for curve in self.curves.values())
+
+        # update attributes
+        for curve, (anymaze_results,
+                    percent_freezing,
+                    freeze_vector,
+                    freeze_onset,
+                    freeze_offset,
+                    dlc_results) in zip(self.curves.values(), results):
+            curve.anymaze_results = anymaze_results
+            curve.behavioral_data["freeze_vector"] = freeze_vector
+            curve.behavioral_data["freeze_onsets"] = freeze_onset
+            curve.behavioral_data["freeze_offset"] = freeze_offset
+            curve.dlc_results = dlc_results
 
     def peak_dict(self, region, pos=True):
         """Used to create a dictionary that maps each individual curve ID to its event attributes.
@@ -619,7 +652,8 @@ class FiberPhotometryCollection:
         else:
             return ax
 
-    def multi_event_eta(self, task, treatment, region, events=None, window=3, ci='tci', sig_duration=8, ax=None, **kwargs):
+    def multi_event_eta(self, task, treatment, region, events=None, window=3, ci='tci', sig_duration=8, ax=None,
+                        **kwargs):
         # window in seconds times 30 indices per second and half the window period to visualize before
         number_of_indices = int(window * 1.5 * 15)
 
@@ -655,7 +689,8 @@ class FiberPhotometryCollection:
             raise ValueError("Confidence interval options are 'tci' or 'bci'")
 
         # find significant indices
-        start_indices = self.eta_significance(c_int[0, :], sig_duration=8) # change to be dependent on the sampling rate
+        start_indices = self.eta_significance(c_int[0, :],
+                                              sig_duration=8)  # change to be dependent on the sampling rate
 
         # make a figure
         if ax is None:
