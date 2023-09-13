@@ -493,6 +493,7 @@ class FiberPhotometryCollection:
                     freeze_offset,
                     dlc_results) in zip(self.curves.values(), results):
             curve.anymaze_results = anymaze_results
+            curve.behavioral_data["percent_freezing"] = percent_freezing
             curve.behavioral_data["freeze_vector"] = freeze_vector
             curve.behavioral_data["freeze_onsets"] = freeze_onset
             curve.behavioral_data["freeze_offset"] = freeze_offset
