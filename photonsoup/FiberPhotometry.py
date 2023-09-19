@@ -456,12 +456,15 @@ class FiberPhotometryCollection:
             else:
                 self.curves.update({arg.ID: arg})
 
-    def curve_array(self, task, treatment, region):
+    def curve_array(self, task, treatment, region, kind="f"):
         curves = self[task, treatment]
         min_len = np.min([len(curve[region]) for curve in curves])
         curve_array = np.zeros(shape=(len(curves), min_len))
         for i, curve in enumerate(curves):
-            curve_array[i] = curve.dfz_signals[region][:min_len]
+            if kind == "f":
+                curve_array[i] = curve.dff_signals[region][:min_len]
+            else:
+                curve_array[i] = curve.dfz_signals[region][:min_len]
         return curve_array
 
     def batch_data(self):
@@ -607,29 +610,32 @@ class FiberPhotometryCollection:
     @staticmethod
     def eta_significance(ci, sig_duration):
 
-        # find deflections from baseline
-        deflections = ci > 0
+        # Find deflections from baseline
+        # True for intervals entirely above zero or entirely below zero
+        deflections = (ci[0, :] > 0) | (ci[1, :] < 0)
 
-        # create a sliding window for convolution
+        # Create a sliding window for convolution
         window = np.ones(sig_duration)
 
-        # convolve with boolean array
+        # Convolve with boolean array
         true_deflects = np.convolve(deflections, window, 'valid')
 
-        # find start indices where convolution equals to significant_duration
+        #Find start indices where convolution equals to sig_duration
         start_indices = np.where(true_deflects == sig_duration)[0]
         return start_indices
+    
 
-    def plot_whole_eta(self, task, treatment, region, ci='tci', sig_duration=8, ax=None, **kwargs):
+    def plot_whole_eta(self, task, treatment, region, ci='tci', sig_duration=8, ax=None, a=0.05, normalize=False, **kwargs):
 
         # create array of curves
         curves = self.curve_array(task, treatment, region)
 
         # choose t-confidence interval or bootstrapped
+        confidence_level = 1 - a
         if ci == 'tci':
-            c_int = self.tci(curves)
+            c_int = self.tci(curves, confidence_level)
         elif ci == 'bci':
-            c_int = self.bci(curves, num_samples=1000)
+            c_int = self.bci(curves, cl=confidence_level, num_samples=1000)
         else:
             raise ValueError("Confidence interval options are 'tci' or 'bci'")
 
@@ -652,8 +658,9 @@ class FiberPhotometryCollection:
             return fig, ax
         else:
             return ax
+        
 
-    def multi_event_eta(self, task, treatment, region, events=None, window=3, ci='tci', sig_duration=8, ax=None,
+    def multi_event_eta(self, task, treatment, region, events=None, window=3, ci='tci', sig_duration=8, a=0.05, normalize=False, ax=None,
                         **kwargs):
         # window in seconds times 30 indices per second and half the window period to visualize before
         number_of_indices = int(window * 1.5 * 15)
@@ -662,36 +669,44 @@ class FiberPhotometryCollection:
         time_idx = "2" if "G" in region else "4"
 
         def event_interpolation(curve, events_):
-            interp = scipy.interpolate.interp1d(curve.Timestamps[time_idx], curve[region], kind='cubic')
-            within_eta_ = np.zeros((len(events_), number_of_indices))
+            interp = scipy.interpolate.interp1d(curve.Timestamps[time_idx], curve[region], kind='cubic', bounds_error=False, fill_value=np.nan)
+            temp_results = []
             for i, event in enumerate(events_):
                 time_period = np.linspace(event - (window / 2), event + window, number_of_indices)
-                within_eta_[i] = interp(time_period)
+                interpolated_values = interp(time_period)
+                if not np.isnan(interpolated_values).all():  # Only if there's any valid interpolation
+                    temp_results.append(interpolated_values)
+
+            within_eta_ = np.array(temp_results)
             return np.average(within_eta_, axis=0)
 
         curves = self[task, treatment]
-        across_eta_ = np.zeros((len(curves), number_of_indices))
+        event_list = []  # To capture valid interpolated events
 
         # If there's only one event, repeat it for each curve
         if len(events) == 1:
             events = events * len(curves)
 
         for j, curve in enumerate(curves):
-            across_eta_[j] = event_interpolation(curve, events[j])
+            event_values = event_interpolation(curve, events[j])
+            if event_values.size > 0:  # If there are any valid interpolated events
+                event_list.append(event_values)
 
-        average_trace = np.average(across_eta_, axis=0)
+        across_eta_ = np.array(event_list)
+        average_trace = np.average(across_eta_, axis=0)  
+
 
         # choose t-confidence interval or bootstrapped
+        confidence_level = 1 - a
         if ci == 'tci':
-            c_int = self.tci(across_eta_)
+            c_int = self.tci(across_eta_, cl=confidence_level)
         elif ci == 'bci':
-            c_int = self.bci(across_eta_, num_samples=1000)
+            c_int = self.bci(across_eta_, cl=confidence_level, num_samples=1000)
         else:
             raise ValueError("Confidence interval options are 'tci' or 'bci'")
 
         # find significant indices
-        start_indices = self.eta_significance(c_int[0, :],
-                                              sig_duration=8)  # change to be dependent on the sampling rate
+        start_indices = self.eta_significance(c_int, sig_duration=8)  # change to be dependent on the sampling rate
 
         # make a figure
         if ax is None:
@@ -704,7 +719,12 @@ class FiberPhotometryCollection:
         y_height = ax.get_ylim()[1] * 0.97
         for start_index in start_indices:
             end_index = start_index + sig_duration
-            ax.hlines(y=y_height, xmin=time[start_index], xmax=time[end_index], colors='r')
+            try:
+                ax.hlines(y=y_height, xmin=time[start_index], xmax=time[end_index], colors='r')
+            except IndexError:
+                end_index = len(time) - 1  # set end_index to the last valid index
+                print(f"Warning: Adjusted end index to {end_index} due to out-of-bounds error.")
+                ax.hlines(y=y_height, xmin=time[start_index], xmax=time[end_index], colors='r')
 
         if ax is None:
             return fig, ax, across_eta_
