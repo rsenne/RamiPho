@@ -58,7 +58,9 @@ class FiberPhotometryCurve:
         if offset is None:
             self.offset = 0
         else:
-            self.offset = offset - self.__T0__
+            self.offset = offset
+
+        self.offset_seconds = self.offset - self.__T0__
 
         # determine sample time
         self._sample_time_ = np.diff(self.fp_df['Timestamp'])[1]
@@ -316,7 +318,7 @@ class FiberPhotometryCurve:
         anymaze_results = anymazeResults(self.anymaze_file)
         anymaze_results.correct_time_warp(self.__TN__)
         percent_freezing = anymaze_results.calculate_binned_freezing(bin_duration=bin_duration, start=start, end=end,
-                                                                     offset=self.offset)
+                                                                     offset=self.offset_seconds)
         if "2" in self.Timestamps.keys():
             freeze_vector = anymaze_results.create_freeze_vector(self.Timestamps["2"])
         else:
@@ -465,9 +467,11 @@ class FiberPhotometryCollection:
         for curve, props, neg_props in zip(self.curves.values(), signal_props, neg_signal_props):
             curve.region_peak_properties, curve.neg_region_peak_properties = props, neg_props
 
-    def batch_behavior(self):
+    def batch_behavior(self, end):
+        if not end:
+            raise ValueError("End-time for session must be specified.")
         # results in a complex tuple, refer to function in curve class for reference
-        results = Parallel(n_jobs=-1)(delayed(curve._process_behavioral_data_batch)() for curve in self.curves.values())
+        results = Parallel(n_jobs=-1)(delayed(curve._process_behavioral_data_batch)(end=end) for curve in self.curves.values())
 
         # update attributes
         for curve, (anymaze_results,

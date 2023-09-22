@@ -27,27 +27,44 @@ class anymazeResults:
         self.anymaze_df['Time'] *= correction_factor
         return
 
-    def calculate_binned_freezing(self,
-                                  bin_duration=60,
-                                  start=None, end=None,
+    def calculate_binned_freezing(self, end,
+                                  bin_duration=120,
+                                  start=None,
                                   offset=0,
                                   time_col='Time',
                                   behavior_col='Freezing'):
+
+        if not end:
+            raise ValueError("End-time for session must be specified.")
+
         # Subtract the offset directly
         self.anymaze_df[time_col] = self.anymaze_df[time_col].astype(float) - offset
+
         # Calculate the duration between rows
         self.anymaze_df['duration'] = self.anymaze_df[time_col].diff().fillna(0)
+
         # Set default start and end times if not specified
         start = start if start is not None else self.anymaze_df[time_col].iloc[0]
         end = end if end is not None else self.anymaze_df[time_col].iloc[-1]
-        bins = np.arange(start, end + bin_duration, bin_duration)  # create bins
+        try:
+            bins = np.arange(start, end + bin_duration, bin_duration)  # create bins
+        except ValueError:
+            bins = np.arange(start, end + bin_duration, bin_duration)
+            return pd.DataFrame({'bin': [f"[{bins[i]}, {bins[i + 1]}" for i in range(len(bins) - 1)],
+                                 'freezing_percentage': [0 for i in range(len(bins) - 1)]}).reset_index(
+                drop=True)
+
         self.anymaze_df['bin'] = pd.cut(self.anymaze_df[time_col], bins, include_lowest=True, right=False)
+
         # Filter rows where the behavior is freezing (i.e., behavior_col is 1)
         freezing_data = self.anymaze_df[self.anymaze_df[behavior_col] == 0]
+
         # Group by the bins and sum the duration
         freezing_durations = freezing_data.groupby('bin')['duration'].sum()
+
         # Convert to percentages
         freezing_percentages = (freezing_durations / bin_duration) * 100
+
         return pd.DataFrame({'bin': freezing_durations.index, 'freezing_percentage': freezing_percentages}).reset_index(
             drop=True)
 
