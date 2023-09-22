@@ -21,53 +21,41 @@ class anymazeResults:
     def correct_time_warp(self, true_endtime=None):
         # First, calculate the real duration in seconds
         warped_time = self.anymaze_df['Time'].max()
-
         # Calculate the correction factor
         correction_factor = true_endtime / warped_time
-
         # Apply the correction factor to the timestamps
         self.anymaze_df['Time'] *= correction_factor
-
         return
 
     def calculate_binned_freezing(self,
-                                  bin_duration=120,
+                                  bin_duration=60,
                                   start=None, end=None,
                                   offset=0,
                                   time_col='Time',
                                   behavior_col='Freezing'):
         # Subtract the offset directly
         self.anymaze_df[time_col] = self.anymaze_df[time_col].astype(float) - offset
-
         # Calculate the duration between rows
         self.anymaze_df['duration'] = self.anymaze_df[time_col].diff().fillna(0)
-
         # Set default start and end times if not specified
         start = start if start is not None else self.anymaze_df[time_col].iloc[0]
         end = end if end is not None else self.anymaze_df[time_col].iloc[-1]
-
         bins = np.arange(start, end + bin_duration, bin_duration)  # create bins
         self.anymaze_df['bin'] = pd.cut(self.anymaze_df[time_col], bins, include_lowest=True, right=False)
-
         # Filter rows where the behavior is freezing (i.e., behavior_col is 1)
         freezing_data = self.anymaze_df[self.anymaze_df[behavior_col] == 0]
-
         # Group by the bins and sum the duration
         freezing_durations = freezing_data.groupby('bin')['duration'].sum()
-
         # Convert to percentages
         freezing_percentages = (freezing_durations / bin_duration) * 100
-
         return pd.DataFrame({'bin': freezing_durations.index, 'freezing_percentage': freezing_percentages}).reset_index(
             drop=True)
 
     def create_freeze_vector(self, timestamps, time_col='Time', behavior_col='Freezing'):
         binary_vector = np.zeros(len(timestamps), dtype=int)
-
         for i, ts in enumerate(timestamps):
             state = self.anymaze_df.loc[self.anymaze_df[time_col] <= ts, behavior_col].iloc[-1]
             binary_vector[i] = state
-
         self.freeze_vector = binary_vector
         return binary_vector
 

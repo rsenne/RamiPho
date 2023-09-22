@@ -58,7 +58,7 @@ class FiberPhotometryCurve:
         if offset is None:
             self.offset = 0
         else:
-            self.offset = offset
+            self.offset = offset - self.__T0__
 
         # determine sample time
         self._sample_time_ = np.diff(self.fp_df['Timestamp'])[1]
@@ -312,35 +312,16 @@ class FiberPhotometryCurve:
 
         return dff_signal, dfz_signal
 
-    def process_behavioral_data(self):
-        """_summary_
-        """
-
-        # get freeze vector and other fun goodies
-        self.anymaze_results = anymazeResults(self.anymaze_file)
-        self.anymaze_results.correct_time_warp(self.__TN__)
-        self.behavioral_data["percent_freezing"] = self.anymaze_results.calculate_binned_freezing()
-
-        if "2" in self.Timestamps.keys():
-            self.behavioral_data["freeze_vector"] = self.anymaze_results.create_freeze_vector(self.Timestamps["2"])
-        else:
-            self.behavioral_data["freeze_vector"] = self.anymaze_results.create_freeze_vector(self.Timestamps["4"])
-
-        freeze_onset, freeze_offset = self.anymaze_results.find_onset_offset()
-
-        # process dlc results for getting kalman filter predictions
-        self.dlc_results = dlcResults(self.dlc_file)
-        self.dlc_results.process_dlc(bparts=None, fps=self.fps)
-        return
-
-    def _process_behavioral_data_batch(self, bin_duration=60, start=None, end=None):
+    def _process_behavioral_data_batch(self, bin_duration=60, start=0, end=None):
         anymaze_results = anymazeResults(self.anymaze_file)
         anymaze_results.correct_time_warp(self.__TN__)
-        percent_freezing = anymaze_results.calculate_binned_freezing(bin_duration=bin_duration, start=start, end=end, offset=self.offset)
+        percent_freezing = anymaze_results.calculate_binned_freezing(bin_duration=bin_duration, start=start, end=end,
+                                                                     offset=self.offset)
         if "2" in self.Timestamps.keys():
             freeze_vector = anymaze_results.create_freeze_vector(self.Timestamps["2"])
         else:
             freeze_vector = anymaze_results.create_freeze_vector(self.Timestamps["4"])
+            print(freeze_vector)
 
         freeze_onset, freeze_offset = anymaze_results.find_onset_offset()
 
@@ -620,12 +601,12 @@ class FiberPhotometryCollection:
         # Convolve with boolean array
         true_deflects = np.convolve(deflections, window, 'valid')
 
-        #Find start indices where convolution equals to sig_duration
+        # Find start indices where convolution equals to sig_duration
         start_indices = np.where(true_deflects == sig_duration)[0]
         return start_indices
-    
 
-    def plot_whole_eta(self, task, treatment, region, trial_len=360, ci='tci', sig_duration=8, ax=None, a=0.05, **kwargs):
+    def plot_whole_eta(self, task, treatment, region, trial_len=360, ci='tci', sig_duration=8, ax=None, a=0.05,
+                       **kwargs):
 
         # create array of curves
         curves = self.curve_array(task, treatment, region)
@@ -666,7 +647,6 @@ class FiberPhotometryCollection:
             return fig, ax
         else:
             return ax
-        
 
     def multi_event_eta(self, task, treatment, region, events=None, window=3, ci='tci', sig_duration=8, a=0.05, ax=None,
                         **kwargs):
@@ -678,7 +658,8 @@ class FiberPhotometryCollection:
 
         def event_interpolation(curve, events_, j):
             try:
-                interp = scipy.interpolate.interp1d(curve.Timestamps[time_idx], curve[region], kind='cubic', bounds_error=False, fill_value=np.nan)
+                interp = scipy.interpolate.interp1d(curve.Timestamps[time_idx], curve[region], kind='cubic',
+                                                    bounds_error=False, fill_value=np.nan)
             except ValueError:
                 print(curve.Timestamps[time_idx])
                 print(j)
@@ -706,8 +687,7 @@ class FiberPhotometryCollection:
                 event_list.append(event_values)
 
         across_eta_ = np.array(event_list)
-        average_trace = np.average(across_eta_, axis=0)  
-
+        average_trace = np.average(across_eta_, axis=0)
 
         # choose t-confidence interval or bootstrapped
         confidence_level = 1 - a
