@@ -71,7 +71,10 @@ class anymazeResults:
     def create_freeze_vector(self, timestamps, time_col='Time', behavior_col='Freezing'):
         binary_vector = np.zeros(len(timestamps), dtype=int)
         for i, ts in enumerate(timestamps):
-            state = self.anymaze_df.loc[self.anymaze_df[time_col] <= ts, behavior_col].iloc[-1]
+            try:
+                state = self.anymaze_df.loc[self.anymaze_df[time_col] <= ts, behavior_col].iloc[-1]
+            except IndexError:
+                continue
             binary_vector[i] = state
         self.freeze_vector = binary_vector
         return binary_vector
