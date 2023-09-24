@@ -471,7 +471,8 @@ class FiberPhotometryCollection:
         if not end:
             raise ValueError("End-time for session must be specified.")
         # results in a complex tuple, refer to function in curve class for reference
-        results = Parallel(n_jobs=-1)(delayed(curve._process_behavioral_data_batch)(end=end) for curve in self.curves.values())
+        results = Parallel(n_jobs=-1)(
+            delayed(curve._process_behavioral_data_batch)(end=end) for curve in self.curves.values())
 
         # update attributes
         for curve, (anymaze_results,
@@ -484,7 +485,7 @@ class FiberPhotometryCollection:
             curve.behavioral_data["percent_freezing"] = percent_freezing
             curve.behavioral_data["freeze_vector"] = freeze_vector
             curve.behavioral_data["freeze_onsets"] = freeze_onset
-            curve.behavioral_data["freeze_offset"] = freeze_offset
+            curve.behavioral_data["freeze_offsets"] = freeze_offset
             curve.dlc_results = dlc_results
 
     def peak_dict(self, region, pos=True):
@@ -660,45 +661,37 @@ class FiberPhotometryCollection:
         # determine if we need timestamps for green or red indicator
         time_idx = "2" if "G" in region else "4"
 
-        def event_interpolation(curve, events_, j):
-            try:
-                interp = scipy.interpolate.interp1d(curve.Timestamps[time_idx], curve[region], kind='cubic',
-                                                    bounds_error=False, fill_value=np.nan)
-            except ValueError:
-                print(curve.Timestamps[time_idx])
-                print(j)
-                raise ValueError
-            temp_results = []
+        def event_interpolation(curve, events_):
+            within_eta_ = np.zeros((len(events_), number_of_indices))
+            interp = scipy.interpolate.interp1d(curve.Timestamps[time_idx], curve[region], kind='cubic',
+                                                bounds_error=False, fill_value=np.nan)
             for i, event in enumerate(events_):
                 time_period = np.linspace(event - (window / 2), event + window, number_of_indices)
-                interpolated_values = interp(time_period)
-                if not np.isnan(interpolated_values).all():  # Only if there's any valid interpolation
-                    temp_results.append(interpolated_values)
-
-            within_eta_ = np.array(temp_results)
-            return np.average(within_eta_, axis=0)
+                within_eta_[i] = interp(time_period)
+            return np.nanmean(within_eta_, axis=0)
 
         curves = self[task, treatment]
-        event_list = []  # To capture valid interpolated events
-
         # If there's only one event, repeat it for each curve
         if len(events) == 1:
             events = events * len(curves)
-
+        else:
+            # Identify valid indices where events is not an empty list
+            valid_indices = [i for i, e in enumerate(events) if len(e) > 0]
+            # Filter curves and events to only include valid entries
+            curves = [curves[i] for i in valid_indices]
+            events = [events[i] for i in valid_indices]
+        # Pre-allocate eta_array
+        eta_array = np.zeros((len(events), number_of_indices))
         for j, curve in enumerate(curves):
-            event_values = event_interpolation(curve, events[j], j)
-            if event_values.size > 0:  # If there are any valid interpolated events
-                event_list.append(event_values)
+            eta_array[j] = event_interpolation(curve, events[j])
 
-        across_eta_ = np.array(event_list)
-        average_trace = np.average(across_eta_, axis=0)
-
+        average_trace = np.average(eta_array, axis=0)
         # choose t-confidence interval or bootstrapped
         confidence_level = 1 - a
         if ci == 'tci':
-            c_int = self.tci(across_eta_, cl=confidence_level)
+            c_int = self.tci(eta_array, cl=confidence_level)
         elif ci == 'bci':
-            c_int = self.bci(across_eta_, cl=confidence_level, num_samples=1000)
+            c_int = self.bci(eta_array, cl=confidence_level, num_samples=1000)
         else:
             raise ValueError("Confidence interval options are 'tci' or 'bci'")
 
@@ -724,9 +717,9 @@ class FiberPhotometryCollection:
                 ax.hlines(y=y_height, xmin=time[start_index], xmax=time[end_index], colors='r')
 
         if ax is None:
-            return fig, ax, across_eta_
+            return fig, ax, eta_array
         else:
-            return ax, across_eta_
+            return ax, eta_array
 
     def event_summaries(self, region):
         """Creates a DataFrame that contains all the relevant event information e.g. AUC, FWHM, etc. This can be used
@@ -768,6 +761,9 @@ class FiberPhotometryCollection:
             ax.set_xticks(np.linspace(0, raster_array.shape[1], xtick_freq),
                           labels=np.linspace(0, xtick_range, xtick_freq, dtype=np.int))
         return fig, ax
+
+    def design_matrix(self, task, treatment, continuous_behavioral_kwargs, discrete_behavioral_kwargs, neural_kwargs):
+        pass
 
     def save(self, filename):
         """Save the FiberPhotometryCollection object to a file.
