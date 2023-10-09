@@ -1,41 +1,61 @@
 import numpy as np
-import matplotlib.pyplot as plt
-
-__all__ = ["bSpline"]
 
 
-class bSpline:
-    def __init__(self, n, d, c):
+class BSpline:
+    """ Class for generating B-spline basis functions and associated spline map. """
 
-        kv = np.array(([0] * d + list(np.arange(0, c - d + 1)) + [c - d] * d))
-        u = np.linspace(0, c - d, n)
+    def __init__(self, num_points, degree, num_knots):
+        """
+        Initialize B-spline basis functions.
 
-        self.b = np.zeros((n, c))  # basis
-        bb = np.zeros((n, c))  # basis buffer
-        left = np.clip(np.floor(u), 0, c - d - 1).astype(int)  # left knot vector indices
-        right = left + d + 1  # right knot vector indices
+        Parameters:
+        - num_points (int): Number of evaluation points.
+        - degree (int): Degree of the spline.
+        - num_knots (int): Number of knots.
+        """
 
-        # Go!
-        nrange = np.arange(n)
-        self.b[nrange, left] = 1.0
-        for j in range(1, d + 1):
-            crange = np.arange(j)[:, None]
-            bb[nrange, left + crange] = self.b[nrange, left + crange]
-            self.b[nrange, left] = 0.0
-            for i in range(j):
-                f = bb[nrange, left + i] / (kv[right + i] - kv[right + i - j])
-                self.b[nrange, left + i] = self.b[nrange, left + i] + f * (kv[right + i] - u)
-                self.b[nrange, left + i + 1] = f * (u - kv[right + i - j])
+        # Construct knot vector
+        self.knot_vector = np.array([0] * degree + list(range(num_knots - degree + 1)) + [num_knots - degree] * degree)
+        # Uniformly spaced evaluation points
+        eval_points = np.linspace(0, num_knots - degree, num_points)
+        # Initialize basis matrix
+        self.basis = np.zeros((num_points, num_knots))
+        # Identify left and right indices in the knot vector for each evaluation point
+        left_indices = np.clip(np.floor(eval_points).astype(int), 0, num_knots - degree - 1)
+        right_indices = left_indices + degree + 1
+        # Compute basis functions
+        self._compute_basis(eval_points, left_indices, right_indices, degree)
 
-    def create_spline_map(self, left_inds, length):
-        spl_map = np.zeros(shape=(np.shape(self.b)[1], length))
-        for i in range(np.shape(spl_map)[0]):
-            try:
-                for ind in left_inds:
-                    spl_map[i, ind:ind + np.shape(self.b)[0]] = self.b[:, i]
-            except ValueError:
-                for ind in left_inds[:-3]:
-                    spl_map[i, ind:ind + np.shape(self.b)[0]] = self.b[:, i]
+    def _compute_basis(self, u, left, right, degree):
+        """ Internal method for computing B-spline basis functions. """
+        for idx, l in enumerate(left):
+            self.basis[idx, l] = 1.0
+            basis_buffer = np.zeros_like(self.basis)
+            for j in range(1, degree + 1):
+                basis_buffer[idx, l:l + j] = self.basis[idx, l:l + j]
+                self.basis[idx, l] = 0.0
+                for i in range(j):
+                    fraction = basis_buffer[idx, l + i] / (
+                                self.knot_vector[right[idx] + i] - self.knot_vector[right[idx] + i - j])
+                    self.basis[idx, l + i] += fraction * (self.knot_vector[right[idx] + i] - u[idx])
+                    self.basis[idx, l + i + 1] = fraction * (u[idx] - self.knot_vector[right[idx] + i - j])
 
-        spl_dict = {f"spline_var{i}": spl_map[i, :] for i in range(np.shape(spl_map)[0])}
-        return spl_map, spl_dict
+    def create_spline_map(self, event_indices, map_length):
+        """
+        Creates a spline map based on event indices and map length.
+
+        Parameters:
+        - event_indices (list or ndarray): Indices of events to consider.
+        - map_length (int): Length of the map to generate.
+
+        Returns:
+        - tuple: Spline map and dictionary representation.
+        """
+        spline_map = np.zeros((self.basis.shape[1], map_length))
+
+        for i in range(spline_map.shape[0]):
+            for event_index in event_indices:
+                if event_index + self.basis.shape[0] > map_length:
+                    continue
+                spline_map[i, event_index:event_index + self.basis.shape[0]] = self.basis[:, i]
+        return spline_map

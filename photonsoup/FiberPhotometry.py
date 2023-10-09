@@ -6,14 +6,15 @@ import pandas as pd
 import scipy.stats
 import seaborn as sb
 import statsmodels.api as sm
+import pykalman
 from scipy import sparse
 from scipy.integrate import simpson
 from scipy.ndimage import uniform_filter1d
-from scipy.signal import find_peaks
+from scipy.signal import find_peaks, resample
 from scipy.sparse.linalg import spsolve
 from photonsoup.anymaze_analysis import anymazeResults
 from photonsoup.dlc_analysis import dlcResults
-import pykalman
+from photonsoup.b_spline import BSpline
 from joblib import Parallel, delayed
 
 __all__ = ["FiberPhotometryCurve", "FiberPhotometryCollection"]
@@ -54,6 +55,7 @@ class FiberPhotometryCurve:
         self.anymaze_results = None
         self.dlc_results = None
         self.interp = None
+        self.splines = None
 
         if offset is None:
             self.offset = 0
@@ -403,6 +405,26 @@ class FiberPhotometryCurve:
             raise KeyError(f'{signal} is not in {self}')
         return fig
 
+    def generate_splines(self, n_knots=12, spline_indices=None, spline_length=30):
+        b_set = BSpline(spline_length, 3, n_knots)
+        try:
+            spline_set = b_set.create_spline_map(spline_indices, len(self.dff_signals["Region0G"]))
+        except KeyError:
+            spline_set = b_set.create_spline_map(spline_indices, len(self.dff_signals["Region1G"]))
+        return spline_set
+
+    def regression_splines(self):
+        def find_nearest_index(array, value):
+            array = np.asarray(array)
+            idx = np.argmin(np.abs(array - value))
+            return int(idx)
+        shock_idxes = [find_nearest_index(self.Timestamps["2"], idx) for idx in [120, 180, 240, 300]]
+        print(shock_idxes)
+        shock1_spline_set = self.generate_splines(spline_indices=shock_idxes)
+        freeze_onset_set = self.generate_splines(spline_indices=self.behavioral_data["freeze_onsets"])
+        freeze_offset_set = self.generate_splines(spline_indices=self.behavioral_data["freeze_onsets"])
+        return shock1_spline_set, freeze_onset_set, freeze_offset_set
+
 
 class FiberPhotometryCollection:
     def __init__(self, name=None):
@@ -663,7 +685,7 @@ class FiberPhotometryCollection:
 
         def event_interpolation(curve, events_):
             within_eta_ = np.zeros((len(events_), number_of_indices))
-            interp = scipy.interpolate.interp1d(curve.Timestamps[time_idx], curve[region], kind='cubic',
+            interp = scipy.interpolate.interp1d(curve.Timestamps[time_idx], curve.dfz_signals[region], kind='cubic',
                                                 bounds_error=False, fill_value=np.nan)
             for i, event in enumerate(events_):
                 time_period = np.linspace(event - (window / 2), event + window, number_of_indices)
@@ -762,8 +784,25 @@ class FiberPhotometryCollection:
                           labels=np.linspace(0, xtick_range, xtick_freq, dtype=np.int))
         return fig, ax
 
-    def design_matrix(self, task, treatment, continuous_behavioral_kwargs, discrete_behavioral_kwargs, neural_kwargs):
-        pass
+    def design_matrix(self, task, treatment, region_g, region_r):
+        curves = self[task, treatment]
+        list_of_dfs = []
+        for curve in curves:
+            length_curve = len(curve.Timestamps["2"])
+            df = pd.DataFrame({"G": curve[region_g],
+                               "R": curve[region_r],
+                               "X": resample(curve.dlc_results.filtered_df["centroid"].x, length_curve),
+                               "Y": resample(curve.dlc_results.filtered_df["centroid"].y, length_curve),
+                               "X_velocity": resample(curve.dlc_results.filtered_df["centroid"].velocity_x, length_curve),
+                               "Y_velocity": resample(curve.dlc_results.filtered_df["centroid"].velocity_y, length_curve),
+                               "X_acceleration": resample(curve.dlc_results.filtered_df["centroid"].acceleration_x, length_curve),
+                               "Y_acceleration": resample(curve.dlc_results.filtered_df["centroid"].acceleration_y, length_curve),
+                               "Freezing": curve.behavioral_data["freeze_vector"],
+                               "Mouse_ID": [curve.ID for i in range(len(curve[region_g]))],
+                               })
+            list_of_dfs.append(df)
+        mega_df = pd.concat(list_of_dfs, ignore_index=True)
+        return mega_df
 
     def save(self, filename):
         """Save the FiberPhotometryCollection object to a file.
