@@ -789,6 +789,7 @@ class FiberPhotometryCollection:
         list_of_dfs = []
         for curve in curves:
             length_curve = len(curve.Timestamps["2"])
+            shock_splines, freeze_onset_splines, freeze_offset_splines = curve.regression_splines()
             df = pd.DataFrame({"G": curve[region_g],
                                "R": curve[region_r],
                                "X": resample(curve.dlc_results.filtered_df["centroid"].x, length_curve),
@@ -800,6 +801,12 @@ class FiberPhotometryCollection:
                                "Freezing": curve.behavioral_data["freeze_vector"],
                                "Mouse_ID": [curve.ID for i in range(len(curve[region_g]))],
                                })
+            for i in range(shock_splines.shape[0]):
+                df[f"Shock_Spline{i}"] = shock_splines[i, :]
+            for i in range(freeze_onset_splines.shape[0]):
+                df[f"Freeze_Onset_Spline{i}"] = freeze_onset_splines[i, :]
+            for i in range(freeze_offset_splines.shape[0]):
+                df[f"Freeze_Offset_Spline{i}"] = freeze_offset_splines[i, :]
             list_of_dfs.append(df)
         mega_df = pd.concat(list_of_dfs, ignore_index=True)
         return mega_df
