@@ -14,9 +14,8 @@ analysis_script.ipynb
 FiberPho/analysis_file_ma681.py
 FiberPho/vCA1_analysis.py
 *.svg
-*.ipynb
 ssm/
 *.pyc
 .vscode/settings.json
 .DS_Store
-*.ipynb
+
