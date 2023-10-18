@@ -419,8 +419,7 @@ class FiberPhotometryCurve:
             idx = np.argmin(np.abs(array - value))
             return int(idx)
         shock_idxes = [find_nearest_index(self.Timestamps["2"], idx) for idx in [120, 180, 240, 300]]
-        print(shock_idxes)
-        shock1_spline_set = self.generate_splines(spline_indices=shock_idxes)
+        shock1_spline_set = self.generate_splines(spline_indices=shock_idxes, spline_length=125)
         freeze_onset_set = self.generate_splines(spline_indices=self.behavioral_data["freeze_onsets"])
         freeze_offset_set = self.generate_splines(spline_indices=self.behavioral_data["freeze_onsets"])
         return shock1_spline_set, freeze_onset_set, freeze_offset_set
