@@ -1,21 +1,31 @@
-\.idea/workspace.xml
-*.xml
+# JetBrains IDE files
+.idea/
 *.iml
-*.csv
-FiberPho/Test_Photometry.py
-.idea/other.xml
-.idea/modules.xml
-.idea/vcs.xml
-FiberPho/analysis_script.ipynb
-analysis_script.ipynb
-.idea/misc.xml
-.idea/RamiPho.iml
-.idea
-FiberPho/analysis_file_ma681.py
-FiberPho/vCA1_analysis.py
-*.svg
-ssm/
+
+# Python files
 *.pyc
-.vscode/settings.json
+
+# Jupyter Notebooks
+.ipynb_checkpoints/
+
+# CSV, XML, SVG, and PNG files
+*.csv
+*.xml
+*.svg
+*.png
+
+# VS Code files
+.vscode/
+
+# MacOS files
 .DS_Store
 
+# Custom project files
+FiberPho/Test_Photometry.py
+FiberPho/analysis_script.ipynb
+FiberPho/analysis_file_ma681.py
+FiberPho/vCA1_analysis.py
+analysis_script.ipynb
+
+# Other
+.ssm/

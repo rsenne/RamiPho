@@ -196,6 +196,7 @@ class FiberPhotometryCurve:
             z = spsolve(Z, w * y)
             w = p * (y > z) + (1 - p) * (y < z)
         return y - z
+    
 
     @staticmethod
     def _df_f(raw, method="standard"):
@@ -419,9 +420,9 @@ class FiberPhotometryCurve:
             idx = np.argmin(np.abs(array - value))
             return int(idx)
         shock_idxes = [find_nearest_index(self.Timestamps["2"], idx) for idx in [120, 180, 240, 300]]
-        shock1_spline_set = self.generate_splines(spline_indices=shock_idxes, spline_length=125)
-        freeze_onset_set = self.generate_splines(spline_indices=self.behavioral_data["freeze_onsets"])
-        freeze_offset_set = self.generate_splines(spline_indices=self.behavioral_data["freeze_onsets"])
+        shock1_spline_set = self.generate_splines(n_knots=9, spline_indices=shock_idxes, spline_length=125)
+        freeze_onset_set = self.generate_splines(n_knots=7, spline_indices=self.behavioral_data["freeze_onsets"])
+        freeze_offset_set = self.generate_splines(n_knots=7, spline_indices=self.behavioral_data["freeze_onsets"])
         return shock1_spline_set, freeze_onset_set, freeze_offset_set
 
 
@@ -789,8 +790,8 @@ class FiberPhotometryCollection:
         for curve in curves:
             length_curve = len(curve.Timestamps["2"])
             shock_splines, freeze_onset_splines, freeze_offset_splines = curve.regression_splines()
-            df = pd.DataFrame({"G": curve[region_g],
-                               "R": curve[region_r],
+            df = pd.DataFrame({"G": curve.dfz_signals[region_g],
+                               "R": curve.dfz_signals[region_r],
                                "X": resample(curve.dlc_results.filtered_df["centroid"].x, length_curve),
                                "Y": resample(curve.dlc_results.filtered_df["centroid"].y, length_curve),
                                "X_velocity": resample(curve.dlc_results.filtered_df["centroid"].velocity_x, length_curve),
