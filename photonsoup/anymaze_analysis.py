@@ -24,7 +24,9 @@ class anymazeResults:
         # Calculate the correction factor
         correction_factor = true_endtime / warped_time
         # Apply the correction factor to the timestamps
-        self.anymaze_df['Time'] *= correction_factor
+        self.anymaze_df['Time'] *= 0.93935 #correction_factor
+        print("warped time is ")
+        print(warped_time)
         return
 
     def calculate_binned_freezing(self, end,

@@ -6,7 +6,6 @@ import pandas as pd
 import scipy.stats
 import seaborn as sb
 import statsmodels.api as sm
-import pykalman
 from scipy import sparse
 from scipy.integrate import simpson
 from scipy.ndimage import uniform_filter1d
@@ -15,6 +14,7 @@ from scipy.sparse.linalg import spsolve
 from photonsoup.anymaze_analysis import anymazeResults
 from photonsoup.dlc_analysis import dlcResults
 from photonsoup.b_spline import BSpline
+import pykalman
 from joblib import Parallel, delayed
 
 __all__ = ["FiberPhotometryCurve", "FiberPhotometryCollection"]
@@ -55,7 +55,6 @@ class FiberPhotometryCurve:
         self.anymaze_results = None
         self.dlc_results = None
         self.interp = None
-        self.splines = None
 
         if offset is None:
             self.offset = 0
@@ -196,10 +195,10 @@ class FiberPhotometryCurve:
             z = spsolve(Z, w * y)
             w = p * (y > z) + (1 - p) * (y < z)
         return y - z
-    
 
     @staticmethod
-    def _df_f(raw, method="standard"):
+    ###CHANGE FOR DFF OR DFZ
+    def _df_f(raw, method="z_scored"):
         """
         :param raw: a smoothed baseline-corrected array of fluorescence values
         :param method: whether you want standard df/f or if you would like a z-scored scaling
@@ -361,7 +360,7 @@ class FiberPhotometryCurve:
 
     def find_signal(self, neg=False):
         """_summary_
-
+        #change for dff or dfz
         Args:
             neg (bool, optional): _description_. Defaults to False.
 
@@ -369,15 +368,17 @@ class FiberPhotometryCurve:
             _type_: _description_
         """
         region_peak_properties = {}
-
+        ##Change for dff or dfz###
         for region, sig in self.dff_signals.items():
             signal = -sig if neg else sig
-            peaks, properties = find_peaks(signal, height=np.std(signal), prominence=2 * np.std(signal), width=(7, 150),
+            # peaks, properties = find_peaks(signal, height=np.std(signal), prominence=2 * np.std(signal), width=(7, 150),
+            #                                rel_height=0.5)
+            peaks, properties = find_peaks(signal, height=2, prominence= 2 * 1, width=(7, 150),
                                            rel_height=0.5)
             properties['peaks'] = peaks
             properties['areas_under_curve'] = self.calc_area([int(x) for x in properties['left_ips']],
                                                              [int(x) for x in properties['right_ips']],
-                                                             self.dff_signals[region])
+                                                             self.dfz_signals[region])
             properties['widths'] *= self._sample_time_
             region_peak_properties[region] = properties
 
@@ -385,22 +386,24 @@ class FiberPhotometryCurve:
 
     def visual_check_peaks(self, signal):
         """
+        #change for dff or dfz
         Plots object's df_f signal overlayed with peaks
         :param signal: string of which signal to check
+                type: dff or dfz
         :return:
         """
         if hasattr(self, "region_peak_properties"):
             fig = plt.figure()
-            plt.plot(self.dff_signals[signal])
+            plt.plot(self.dfz_signals[signal])
             plt.plot(self.region_peak_properties[signal]['peaks'],
-                     self.dff_signals[signal][self.region_peak_properties[signal]['peaks']], "x")
+                         self.dfz_signals[signal][self.region_peak_properties[signal]['peaks']], "x")
             plt.vlines(x=self.region_peak_properties[signal]['peaks'],
-                       ymin=self.dff_signals[signal][self.region_peak_properties[signal]['peaks']] -
-                            self.region_peak_properties[signal]["prominences"],
-                       ymax=self.dff_signals[signal][self.region_peak_properties[signal]['peaks']], color="C1")
+                           ymin=self.dfz_signals[signal][self.region_peak_properties[signal]['peaks']] -
+                                self.region_peak_properties[signal]["prominences"],
+                           ymax=self.dfz_signals[signal][self.region_peak_properties[signal]['peaks']], color="C1")
             plt.hlines(y=self.region_peak_properties[signal]["width_heights"],
-                       xmin=self.region_peak_properties[signal]["left_ips"],
-                       xmax=self.region_peak_properties[signal]["right_ips"], color="C1")
+                           xmin=self.region_peak_properties[signal]["left_ips"],
+                           xmax=self.region_peak_properties[signal]["right_ips"], color="C1")
             plt.show()
         else:
             raise KeyError(f'{signal} is not in {self}')
@@ -411,14 +414,14 @@ class FiberPhotometryCurve:
         try:
             spline_set = b_set.create_spline_map(spline_indices, len(self.dff_signals["Region0G"]))
         except KeyError:
-            spline_set = b_set.create_spline_map(spline_indices, len(self.dff_signals["Region1G"]))
+            spline_set = b_set.create_spline_map(spline_indices, len(self.dff_signals["Region2G"]))
         return spline_set
-
     def regression_splines(self):
         def find_nearest_index(array, value):
             array = np.asarray(array)
             idx = np.argmin(np.abs(array - value))
             return int(idx)
+
         shock_idxes = [find_nearest_index(self.Timestamps["2"], idx) for idx in [120, 180, 240, 300]]
         shock1_spline_set = self.generate_splines(n_knots=9, spline_indices=shock_idxes, spline_length=125)
         freeze_onset_set = self.generate_splines(n_knots=7, spline_indices=self.behavioral_data["freeze_onsets"])
@@ -461,7 +464,7 @@ class FiberPhotometryCollection:
             else:
                 self.curves.update({arg.ID: arg})
 
-    def curve_array(self, task, treatment, region, kind="f"):
+    def curve_array(self, task, treatment, region, kind="z"):
         curves = self[task, treatment]
         min_len = np.min([len(curve[region]) for curve in curves])
         curve_array = np.zeros(shape=(len(curves), min_len))
@@ -632,11 +635,11 @@ class FiberPhotometryCollection:
         start_indices = np.where(true_deflects == sig_duration)[0]
         return start_indices
 
-    def plot_whole_eta(self, task, treatment, region, trial_len=360, ci='tci', sig_duration=8, ax=None, a=0.05,
+    def plot_whole_eta(self, task, treatment, region, trial_len=360, ci='tci', sig_duration=8, ax=None, a=0.05,kind='z',
                        **kwargs):
 
         # create array of curves
-        curves = self.curve_array(task, treatment, region)
+        curves = self.curve_array(task, treatment, region, kind)
 
         # choose t-confidence interval or bootstrapped
         confidence_level = 1 - a
@@ -678,11 +681,13 @@ class FiberPhotometryCollection:
     def multi_event_eta(self, task, treatment, region, events=None, window=3, ci='tci', sig_duration=8, a=0.05, ax=None,
                         **kwargs):
         # window in seconds times 30 indices per second and half the window period to visualize before
-        number_of_indices = int(window * 1.5 * 15)
+        number_of_indices = int(window * 1.5 * 30)
+        print(number_of_indices)
 
         # determine if we need timestamps for green or red indicator
         time_idx = "2" if "G" in region else "4"
 
+        #Change for dff or dfz
         def event_interpolation(curve, events_):
             within_eta_ = np.zeros((len(events_), number_of_indices))
             interp = scipy.interpolate.interp1d(curve.Timestamps[time_idx], curve.dfz_signals[region], kind='cubic',
@@ -693,12 +698,14 @@ class FiberPhotometryCollection:
             return np.nanmean(within_eta_, axis=0)
 
         curves = self[task, treatment]
+        print(self[task, treatment])
         # If there's only one event, repeat it for each curve
         if len(events) == 1:
             events = events * len(curves)
         else:
             # Identify valid indices where events is not an empty list
             valid_indices = [i for i, e in enumerate(events) if len(e) > 0]
+            print(valid_indices)
             # Filter curves and events to only include valid entries
             curves = [curves[i] for i in valid_indices]
             events = [events[i] for i in valid_indices]
@@ -725,9 +732,16 @@ class FiberPhotometryCollection:
             fig, ax = plt.subplots()
         time = np.linspace(-window / 2, window, number_of_indices)
         ax.plot(time, average_trace, **kwargs)
+        print(c_int[0, :])
+        print(c_int[1, :])
+        print("this is time ")
+        print(time)
+        print("c_int is")
+        print(c_int)
         ax.fill_between(time, c_int[0, :], c_int[1, :], alpha=0.3)
+        #ax.fill_between(time, q1, q2, alpha=0.3)
 
-        # plot the significant deflections
+        #plot the significant deflections
         y_height = ax.get_ylim()[1] * 0.97
         for start_index in start_indices:
             end_index = start_index + sig_duration
@@ -749,7 +763,7 @@ class FiberPhotometryCollection:
         Args:
             region (str, optional): String to grab region trace of choice e.g. Region0G, Region1R, etc.
         Returns:
-            df_transformed(pd.DataFrame): A DataFrame that contains a conglomeration of all the events across animals. 
+            df_transformed(pd.DataFrame): A DataFrame that contains a conglomeration of all the events across animals.
         """
         summary_dict = self.peak_dict(region)
         df = pd.DataFrame(summary_dict)
@@ -784,22 +798,28 @@ class FiberPhotometryCollection:
                           labels=np.linspace(0, xtick_range, xtick_freq, dtype=np.int))
         return fig, ax
 
-    def design_matrix(self, task, treatment, region_g, region_r):
+    def design_matrix(self, task, treatment, region_0r, region_1r, region_2g, region_3g):
         curves = self[task, treatment]
         list_of_dfs = []
         for curve in curves:
             length_curve = len(curve.Timestamps["2"])
             shock_splines, freeze_onset_splines, freeze_offset_splines = curve.regression_splines()
-            df = pd.DataFrame({"G": curve.dfz_signals[region_g],
-                               "R": curve.dfz_signals[region_r],
-                               "X": resample(curve.dlc_results.filtered_df["centroid"].x, length_curve),
-                               "Y": resample(curve.dlc_results.filtered_df["centroid"].y, length_curve),
-                               "X_velocity": resample(curve.dlc_results.filtered_df["centroid"].velocity_x, length_curve),
-                               "Y_velocity": resample(curve.dlc_results.filtered_df["centroid"].velocity_y, length_curve),
-                               "X_acceleration": resample(curve.dlc_results.filtered_df["centroid"].acceleration_x, length_curve),
-                               "Y_acceleration": resample(curve.dlc_results.filtered_df["centroid"].acceleration_y, length_curve),
+            df = pd.DataFrame({"0R": curve.dfz_signals[region_0r],
+                               "1R": curve.dfz_signals[region_1r],
+                               "2G": curve.dfz_signals[region_2g],
+                               "3G": curve.dfz_signals[region_3g],
+                               #"X": resample(curve.dlc_results.filtered_df["centroid"].x, length_curve),
+                               #"Y": resample(curve.dlc_results.filtered_df["centroid"].y, length_curve),
+                               #"X_velocity": resample(curve.dlc_results.filtered_df["centroid"].velocity_x,
+                                                      #length_curve),
+                               #"Y_velocity": resample(curve.dlc_results.filtered_df["centroid"].velocity_y,
+                                                      #length_curve),
+                               #"X_acceleration": resample(curve.dlc_results.filtered_df["centroid"].acceleration_x,
+                                                         # length_curve),
+                               #"Y_acceleration": resample(curve.dlc_results.filtered_df["centroid"].acceleration_y,
+                                                          #length_curve),
                                "Freezing": curve.behavioral_data["freeze_vector"],
-                               "Mouse_ID": [curve.ID for i in range(len(curve[region_g]))],
+                               "Mouse_ID": [curve.ID for i in range(len(curve[region_2g]))],
                                })
             for i in range(shock_splines.shape[0]):
                 df[f"Shock_Spline{i}"] = shock_splines[i, :]
@@ -810,6 +830,9 @@ class FiberPhotometryCollection:
             list_of_dfs.append(df)
         mega_df = pd.concat(list_of_dfs, ignore_index=True)
         return mega_df
+        pass
+
+
 
     def save(self, filename):
         """Save the FiberPhotometryCollection object to a file.
